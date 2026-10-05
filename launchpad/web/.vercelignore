@@ -1,0 +1,5 @@
+# Keep local data and env files out of Vercel uploads
+.data
+.env*
+.next
+node_modules
