@@ -1,0 +1,13 @@
+[package]
+name = "mock-mt"
+description = "Test-only NEP-245 multi-token standing in for HOT Bridge (v2_1.omni.hot.tg)"
+version = "0.1.0"
+edition = "2021"
+publish = false
+repository = "https://github.com/multichainmaxii/wgram"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+near-sdk = { workspace = true }

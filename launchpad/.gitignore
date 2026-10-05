@@ -1,0 +1,4 @@
+node_modules/
+# local keypairs (stand-in wGRAM authority, platform) and dev data
+.local/
+web/.data/

@@ -1,0 +1,12 @@
+# Each project has its own .gitignore too (contracts/, launchpad/, launchpad/web/).
+
+node_modules/
+.next/
+*.tsbuildinfo
+
+# env files, certificates and personal Claude Code settings
+.env*
+*.pem
+.claude/settings.local.json
+
+.DS_Store

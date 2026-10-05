@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #0a0f1a;
+  --color-panel: #111827;
+  --color-panel-2: #172033;
+  --color-line: #233047;
+  --color-text: #e6edf7;
+  --color-muted: #8a99b3;
+  --color-accent: #2aabee; /* Telegram blue */
+  --color-accent-strong: #1d8fd0;
+  --color-up: #22c55e;
+  --color-down: #f43f5e;
+}
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html {
+  background: var(--color-ink);
+  color: var(--color-text);
+  color-scheme: dark;
+}
+
+body {
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* Match the wallet adapter's button to the site. */
+.wallet-adapter-button.wallet-adapter-button-trigger {
+  background: var(--color-accent);
+  border-radius: 9999px;
+  height: 40px;
+  padding: 0 18px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+.wallet-adapter-button.wallet-adapter-button-trigger:not([disabled]):hover {
+  background: var(--color-accent-strong);
+}
+.wallet-adapter-modal-wrapper {
+  background: var(--color-panel);
+  border: 1px solid var(--color-line);
+  font-family: inherit;
+}
