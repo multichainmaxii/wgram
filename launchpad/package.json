@@ -7,10 +7,12 @@
     "smoke": "tsx scripts/smoke.ts",
     "seed": "tsx scripts/seed-local.ts",
     "create-config": "tsx scripts/create-config.ts",
-    "claim-fees": "tsx scripts/claim-fees.ts"
+    "claim-fees": "tsx scripts/claim-fees.ts",
+    "create-pool": "tsx scripts/create-pool.ts"
   },
   "dependencies": {
     "@meteora-ag/cp-amm-sdk": "1.5.0",
+    "@meteora-ag/dlmm": "^1.9.14",
     "@meteora-ag/dynamic-bonding-curve-sdk": "1.5.13",
     "@solana/spl-token": "^0.4.15",
     "@solana/web3.js": "^1.99.0",
