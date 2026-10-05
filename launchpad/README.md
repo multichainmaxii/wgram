@@ -29,7 +29,7 @@ pool, and the platform and a creator claim trading fees in wGRAM.
 | Launch market cap | 3,000 wGRAM (~$4.5k) |
 | Graduation market cap | 26,500 wGRAM (~$40k, StonkFun's level) |
 | wGRAM raised to graduate | ~6,672 (~$10k) |
-| Trading fee | 1%, half to the coin's creator |
+| Trading fee | 1.5%: Meteora 0.3%, creator ~0.4%, platform ~0.4%, ecosystem buyback ~0.4% |
 | Launch fee | 0.01 SOL (total launch cost ~0.0345 SOL with rent) |
 | Supply | 1B, 6 decimals, no mint authority after launch |
 | Graduated pool | DAMM v2, 1% fee tier, LP locked 50/50 platform/creator |
@@ -54,7 +54,7 @@ website's environment variables, the Vercel deploy and claiming fees.
 
 ```bash
 pnpm create-config --rpc <url> --wgram <mint> --platform-keypair <path>    # creates our Meteora config
-pnpm claim-fees --rpc <url> --config <address> --platform-keypair <path>   # claims the platform's fees
+pnpm claim-fees --rpc <url> --config <address> --platform-keypair <path> --buyback <address>   # claims fees, half to buyback
 ```
 
 Both are dry runs (simulation only) unless you add `--send`.

@@ -18,8 +18,12 @@ import {
 
 export const INITIAL_MCAP_WGRAM = 3_000 // ~$4.5k at launch
 export const MIGRATION_MCAP_WGRAM = 26_500 // ~$40k, StonkFun's graduation level
-export const TRADING_FEE_BPS = 100 // 1%
-export const CREATOR_FEE_SHARE_PCT = 50 // creators get half the trading fees
+// Traders pay 1.5%. Meteora keeps 20% of it (0.3% of volume); creators get 33% of the
+// rest (~0.4%) and the platform 67% (~0.8%), which claim-fees splits 50/50 between the
+// platform and the ecosystem buyback wallet (~0.4% each).
+export const TRADING_FEE_BPS = 150 // 1.5%
+export const CREATOR_FEE_SHARE_PCT = 33
+export const BUYBACK_SHARE_PCT = 50 // of the platform's claimed trading fees
 export const LAUNCH_FEE_SOL = 0.01
 export const TOTAL_SUPPLY = 1_000_000_000
 export const WGRAM_DECIMALS = 9

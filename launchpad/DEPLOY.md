@@ -139,16 +139,17 @@ versions of TON tokens on other chains.
 
 Per coin on its bonding curve, the platform earns:
 
-- **0.4% of trading volume in wGRAM**: the 1% fee, less Meteora's 20% cut, split 50/50 with
-  the coin's creator.
+- **~0.8% of trading volume in wGRAM**: the 1.5% fee, less Meteora's 20% cut, of which the
+  coin's creator gets 33%. `claim-fees` passes half of what it claims (~0.4% of volume) on
+  to the ecosystem buyback wallet (`--buyback`), so the platform keeps ~0.4%.
 - **0.009 SOL per launch**: the 0.01 SOL launch fee, less Meteora's 10%.
 
 Fees wait in each coin's pool until claimed, so claim whenever suits (weekly is plenty):
 
 ```bash
 cd launchpad
-pnpm claim-fees --rpc "$RPC" --config <config> --platform-keypair $KEY          # list and simulate
-pnpm claim-fees --rpc "$RPC" --config <config> --platform-keypair $KEY --send   # claim
+pnpm claim-fees --rpc "$RPC" --config <config> --platform-keypair $KEY --buyback <buyback address>          # list and simulate
+pnpm claim-fees --rpc "$RPC" --config <config> --platform-keypair $KEY --buyback <buyback address> --send   # claim
 ```
 
 - It checks that the keypair is the config's fee claimer, lists every coin with unclaimed

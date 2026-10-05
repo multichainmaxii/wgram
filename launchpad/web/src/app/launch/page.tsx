@@ -102,7 +102,7 @@ export default function LaunchPage() {
           <Info label="Supply" value="1,000,000,000" />
           <Info label="Starts at" value="~$4.5k market cap" />
           <Info label="Graduates at" value="~$40k market cap" />
-          <Info label="Trading fee" value="1%, half goes to you" />
+          <Info label="Trading fee" value="1.5%, about 0.4% of volume goes to you" />
           <p className="pt-1 text-xs text-muted">
             On graduation the curve&apos;s wGRAM and remaining supply move into a Meteora pool with the liquidity locked forever.
           </p>
