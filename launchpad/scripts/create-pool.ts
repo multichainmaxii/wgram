@@ -27,6 +27,12 @@ const BIN_STEP = 25
 const PRESET = new PublicKey('w1rfAh2zApVM55NnpEUxZL5L9EjP4RyAyhjwHraLBQE')
 // 34 bins each side of the price (~ +/-8.9%): one position holds at most 70 bins.
 const HALF_WIDTH = 34
+// Users only ever come with SOL, so a burst of net buying drains the wGRAM side. Two
+// wGRAM-only backstop positions stacked above the core keep a SOL buy quotable up to
+// ~+55% (it just gets pricier) until the refill bot or arbitrage restocks the core.
+const BACKSTOP_LAYERS = 2
+const BACKSTOP_WIDTH = 69 // bins per layer
+const CORE_SHARE_PCT = 67 // of the wGRAM; the rest is split evenly across the backstop
 
 const USAGE =
   'usage: pnpm create-pool --rpc <url> --owner-keypair <path> --wgram <mint> --wgram-amount <n> --sol-amount <n> [--price <SOL per wGRAM>] [--send]'
@@ -117,8 +123,12 @@ async function main() {
   const wgramHeld = await getAccount(connection, wgramAta).then((a) => a.amount, () => 0n)
   console.log(`  owner     ${owner.publicKey.toBase58()}  (${(sol / 1e9).toFixed(4)} SOL, ${(Number(wgramHeld) / 1e9).toFixed(4)} wGRAM)`)
   console.log(`  price     ${price.toPrecision(6)} SOL per wGRAM (bin ${activeId})`)
-  console.log(`  range     ${edge(-HALF_WIDTH).toPrecision(6)} to ${edge(HALF_WIDTH).toPrecision(6)} SOL per wGRAM (bins ${minBin}..${maxBin})`)
-  console.log(`  deposit   ${wgramAmount} wGRAM + ${solAmount} SOL, spread evenly (Spot)`)
+  const coreX = xAmount.muln(CORE_SHARE_PCT).divn(100)
+  const layerX = xAmount.sub(coreX).divn(BACKSTOP_LAYERS)
+  const top = HALF_WIDTH + BACKSTOP_LAYERS * BACKSTOP_WIDTH
+  const fmtUnits = (v: BN) => (Number(v.toString()) / 1e9).toLocaleString(undefined, { maximumFractionDigits: 4 })
+  console.log(`  core      ${edge(-HALF_WIDTH).toPrecision(6)} to ${edge(HALF_WIDTH).toPrecision(6)} SOL per wGRAM (bins ${minBin}..${maxBin}): ${fmtUnits(coreX)} wGRAM + ${solAmount} SOL`)
+  console.log(`  backstop ${BACKSTOP_LAYERS} wGRAM-only layers up to ${edge(top).toPrecision(6)} SOL per wGRAM (+${((edge(top) / price - 1) * 100).toFixed(0)}%): ${fmtUnits(layerX)} wGRAM each`)
   if (BigInt(xAmount.toString()) > wgramHeld) fail(`owner holds ${Number(wgramHeld) / 1e9} wGRAM, less than --wgram-amount`)
   if (BigInt(yAmount.toString()) + 100_000_000n > BigInt(sol)) fail('owner needs --sol-amount plus ~0.1 SOL for rent and fees')
 
@@ -143,18 +153,36 @@ async function main() {
   if (Math.abs(active.binId - activeId) > HALF_WIDTH / 2) {
     fail(`the pool's price (bin ${active.binId}) is far from the market (bin ${activeId}); check before adding liquidity`)
   }
-  const position = Keypair.generate()
-  const addTx: Transaction = await dlmm.initializePositionAndAddLiquidityByStrategy({
-    positionPubKey: position.publicKey,
-    totalXAmount: xAmount,
-    totalYAmount: yAmount,
-    strategy: { minBinId: active.binId - HALF_WIDTH, maxBinId: active.binId + HALF_WIDTH, strategyType: StrategyType.Spot },
-    user: owner.publicKey,
-    slippage: 1,
-  })
-  await sendOrSimulate(connection, addTx, [owner, position], send!, 'add liquidity')
+  // Core: both sides, spread evenly around the pool's price.
+  const a = active.binId
+  const layers = [
+    { label: 'core', min: a - HALF_WIDTH, max: a + HALF_WIDTH, x: coreX, y: yAmount, singleSidedX: false },
+    ...Array.from({ length: BACKSTOP_LAYERS }, (_, i) => ({
+      label: `backstop ${i + 1}`,
+      min: a + HALF_WIDTH + 1 + i * BACKSTOP_WIDTH,
+      max: a + HALF_WIDTH + (i + 1) * BACKSTOP_WIDTH,
+      x: layerX,
+      y: new BN(0),
+      singleSidedX: true,
+    })),
+  ]
+  const positions: PublicKey[] = []
+  for (const layer of layers) {
+    const position = Keypair.generate()
+    const tx: Transaction = await dlmm.initializePositionAndAddLiquidityByStrategy({
+      positionPubKey: position.publicKey,
+      totalXAmount: layer.x,
+      totalYAmount: layer.y,
+      strategy: { minBinId: layer.min, maxBinId: layer.max, strategyType: StrategyType.Spot, singleSidedX: layer.singleSidedX },
+      user: owner.publicKey,
+      slippage: 1,
+    })
+    await sendOrSimulate(connection, tx, [owner, position], send!, `add ${layer.label} (bins ${layer.min}..${layer.max})`)
+    positions.push(position.publicKey)
+  }
   if (send) {
-    console.log(`\nPosition ${position.publicKey.toBase58()} owned by ${owner.publicKey.toBase58()}`)
+    console.log(`\nPositions owned by ${owner.publicKey.toBase58()}:`)
+    for (const [i, p] of positions.entries()) console.log(`  ${layers[i].label.padEnd(11)} ${p.toBase58()}`)
     console.log(`Pool: https://app.meteora.ag/dlmm/${pair!.toBase58()}`)
   }
 }
