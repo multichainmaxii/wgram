@@ -8,7 +8,8 @@
     "seed": "tsx scripts/seed-local.ts",
     "create-config": "tsx scripts/create-config.ts",
     "claim-fees": "tsx scripts/claim-fees.ts",
-    "create-pool": "tsx scripts/create-pool.ts"
+    "create-pool": "tsx scripts/create-pool.ts",
+    "refill-bot": "tsx scripts/refill-bot.ts"
   },
   "dependencies": {
     "@meteora-ag/cp-amm-sdk": "1.5.0",

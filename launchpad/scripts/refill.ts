@@ -55,13 +55,14 @@ export async function refillOnce(
   fair: number,
   convert: Convert,
   targetSol: bigint, // lamports the pool should hold on its SOL side
+  minConvert: bigint = MIN_CONVERT, // smaller amounts wait: each bridge-in costs a fixed relayer fee
 ): Promise<CycleResult> {
   const { binId, price } = await poolPrice(dlmm)
   const premium = price / fair - 1
   const wgram: PublicKey = dlmm.lbPair.tokenXMint
   const spare = async () => BigInt(await connection.getBalance(owner.publicKey)) - SOL_RESERVE
   const carried = await spare()
-  if (premium < MIN_PREMIUM && carried < MIN_CONVERT) return { action: 'idle', premium }
+  if (premium < MIN_PREMIUM && carried < minConvert) return { action: 'idle', premium }
 
   // 1. Withdraw half of the SOL sitting below the active bin, from every position.
   const { userPositions } = await dlmm.getPositionsByUserAndLbPair(owner.publicKey)
@@ -106,7 +107,7 @@ export async function refillOnce(
   // 2. Convert everything spare (this withdrawal plus last cycle's carry) to wGRAM.
   const toConvert = await spare()
   const wgramBefore = await wgramBalance(connection, wgram, owner.publicKey)
-  if (toConvert >= MIN_CONVERT) await convert(toConvert)
+  if (toConvert >= minConvert) await convert(toConvert)
   const bought = (await wgramBalance(connection, wgram, owner.publicKey)) - wgramBefore
 
   // 3. Sell wGRAM into the pool, stopping at the fair price (binary search on quotes).
@@ -175,5 +176,5 @@ export async function refillOnce(
     })
     await send(connection, tx, [owner])
   }
-  return { action: 'refilled', premium, after: after / fair - 1, solConverted: toConvert >= MIN_CONVERT ? toConvert : 0n, wgramBought: bought, wgramSold: sell, solCarried: await spare() }
+  return { action: 'refilled', premium, after: after / fair - 1, solConverted: toConvert >= minConvert ? toConvert : 0n, wgramBought: bought, wgramSold: sell, solCarried: await spare() }
 }
