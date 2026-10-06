@@ -13,6 +13,8 @@ DAMM_V2=cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG    # Meteora DAMM v2 (gradua
 METAPLEX=metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s   # token metadata
 # DAMM v2 config that DBC graduates into (MigrationFeeOption.FixedBps100, 1% LP fee)
 DAMM_V2_CONFIG_1PCT=Hv8Lmzmnju6m7kcokVKvwqz7QPmdX9XfKjJsXz8RXcjp
+DLMM=LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo       # Meteora DLMM (the wGRAM/SOL pool)
+DLMM_PRESET_25BPS=w1rfAh2zApVM55NnpEUxZL5L9EjP4RyAyhjwHraLBQE  # bin step 25, 0.25% fee
 # Coin pages read trades back from transaction history. The default (10,000 shreds)
 # keeps about 4 minutes of it; 2M shreds keeps about 13 hours.
 LEDGER_SHREDS="${LEDGER_SHREDS:-2000000}"
@@ -23,4 +25,6 @@ exec solana-test-validator --reset --quiet --ledger "$LEDGER" --url "$MAINNET" \
   --clone-upgradeable-program "$DBC" \
   --clone-upgradeable-program "$DAMM_V2" \
   --clone-upgradeable-program "$METAPLEX" \
-  --clone "$DAMM_V2_CONFIG_1PCT"
+  --clone-upgradeable-program "$DLMM" \
+  --clone "$DAMM_V2_CONFIG_1PCT" \
+  --clone "$DLMM_PRESET_25BPS"
