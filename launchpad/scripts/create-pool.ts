@@ -132,8 +132,10 @@ async function main() {
   if (BigInt(xAmount.toString()) > wgramHeld) fail(`owner holds ${Number(wgramHeld) / 1e9} wGRAM, less than --wgram-amount`)
   if (BigInt(yAmount.toString()) + 100_000_000n > BigInt(sol)) fail('owner needs --sol-amount plus ~0.1 SOL for rent and fees')
 
-  // One wGRAM/SOL pool per bin step and fee tier; reuse it if someone already made it.
-  let pair: PublicKey | null = await DLMM.getPairPubkeyIfExists(connection, wgram, NATIVE_MINT, new BN(BIN_STEP), new BN(10_000), new BN(0))
+  // Pools made from a preset sit at an address derived from (preset, wGRAM, SOL); reuse
+  // it if it already exists.
+  const [pairAddress] = dlmmModule.deriveLbPairWithPresetParamWithIndexKey(PRESET, wgram, NATIVE_MINT, new PublicKey(dlmmModule.LBCLMM_PROGRAM_IDS['mainnet-beta']))
+  let pair: PublicKey | null = (await connection.getAccountInfo(pairAddress)) ? pairAddress : null
   if (pair) {
     console.log(`  pool      ${pair.toBase58()} (exists)`)
   } else {
@@ -143,7 +145,7 @@ async function main() {
       console.log('\nDry run only: nothing was sent. Re-run with --send to create the pool and add the liquidity.')
       return
     }
-    pair = await DLMM.getPairPubkeyIfExists(connection, wgram, NATIVE_MINT, new BN(BIN_STEP), new BN(10_000), new BN(0))
+    pair = (await connection.getAccountInfo(pairAddress)) ? pairAddress : null
     if (!pair) fail('pool was created but could not be found')
     console.log(`  pool      ${pair!.toBase58()} (created)`)
   }
