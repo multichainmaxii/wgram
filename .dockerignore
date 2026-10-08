@@ -1,0 +1,11 @@
+# Only what the bot image copies; never keys, env files or build output.
+**/node_modules
+**/.local
+**/.data
+**/.env*
+**/.next
+**/target
+**/.dryrun-state
+**/.bridge-in-state
+.git
+.claude

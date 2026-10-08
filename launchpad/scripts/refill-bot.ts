@@ -94,7 +94,11 @@ async function main() {
   const minConvert = BigInt(Math.round(Number(args['min-convert']) * 1e9))
   const connection = new Connection(rpc, 'confirmed')
   const [pair] = dlmmModule.deriveLbPairWithPresetParamWithIndexKey(PRESET, wgram, NATIVE_MINT, new PublicKey(dlmmModule.LBCLMM_PROGRAM_IDS['mainnet-beta']))
-  if (!(await connection.getAccountInfo(pair))) throw new Error(`no wGRAM/SOL pool at ${pair.toBase58()} yet; run create-pool first`)
+  while (!(await connection.getAccountInfo(pair))) {
+    log(`waiting: no wGRAM/SOL pool at ${pair.toBase58()} yet (create-pool makes it)`)
+    if (args.once) return
+    await new Promise((r) => setTimeout(r, Number(args.interval) * 1000))
+  }
   const dlmm = await DLMM.create(connection, pair)
   const env = { NEAR_ACCOUNT: nearAccount, NEAR_KEY_FILE: fromInvocation(nearKey), SOL_KEYPAIR: ownerFile, SOL_RECIPIENT: owner.publicKey.toBase58() }
   const convert = (lamports: bigint) => bridgeIn(lamports, env)

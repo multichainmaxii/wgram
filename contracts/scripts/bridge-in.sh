@@ -16,6 +16,7 @@
 #   SOL_KEYPAIR     Solana keypair that pays the SOL [~/.config/solana/wgram-mainnet.json]
 #   SOL_RECIPIENT   Solana address that receives the wGRAM [SOL_KEYPAIR's address]
 #   YES=1           don't ask before each step
+#   BRIDGE_IN_STATE progress file [next to this script]
 
 set -euo pipefail
 
@@ -30,7 +31,7 @@ ONECLICK="https://1click.chaindefuser.com/v0"
 OMNI_API="https://mainnet.api.bridge.nearone.org/api/v3"
 NEAR_RPC="${NEAR_RPC:-https://rpc.mainnet.near.org}"
 SOL_RPC="${SOL_RPC:-https://api.mainnet-beta.solana.com}"
-STATE="$(cd "$(dirname "$0")" && pwd)/.bridge-in-state"
+STATE="${BRIDGE_IN_STATE:-$(cd "$(dirname "$0")" && pwd)/.bridge-in-state}"
 
 log() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 die() { printf '\nerror: %s\n' "$*" >&2; exit 1; }
