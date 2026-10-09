@@ -20,15 +20,29 @@ import {
   type SwapQuote2Result,
   type VirtualPool,
 } from "@meteora-ag/dynamic-bonding-curve-sdk";
-import { CONFIG_ADDRESS, RPC_URL, TOTAL_SUPPLY, WGRAM_DECIMALS, WGRAM_MINT } from "./config";
+import { CONFIG_ADDRESS, TOTAL_SUPPLY, WGRAM_DECIMALS, WGRAM_MINT, rpcEndpoint } from "./config";
 import type { Coin } from "./types";
 
 export type { Coin } from "./types";
 
 let conn: Connection | null = null;
 let client: DynamicBondingCurveClient | null = null;
-export const connection = () => (conn ??= new Connection(RPC_URL, "confirmed"));
+export const connection = () => (conn ??= new Connection(rpcEndpoint(), "confirmed"));
 export const dbc = () => (client ??= new DynamicBondingCurveClient(connection(), "confirmed"));
+
+// Polls for confirmation instead of web3.js's confirmTransaction, which waits on a
+// websocket that the /api/rpc relay can't provide.
+export async function confirmSignature(conn: Connection, signature: string, lastValidBlockHeight: number) {
+  for (;;) {
+    const {
+      value: [status],
+    } = await conn.getSignatureStatuses([signature]);
+    if (status?.err) throw new Error("Transaction failed on-chain");
+    if (status?.confirmationStatus === "confirmed" || status?.confirmationStatus === "finalized") return;
+    if ((await conn.getBlockHeight("confirmed")) > lastValidBlockHeight) throw new Error("Transaction expired before it confirmed; try again");
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+}
 
 export const wgramMint = () => new PublicKey(WGRAM_MINT);
 export const configAddress = () => new PublicKey(CONFIG_ADDRESS);
@@ -41,7 +55,7 @@ let configCache: PoolConfig | null = null;
 export async function launchpadConfig(): Promise<PoolConfig> {
   if (!configCache) {
     configCache = await dbc().state.getPoolConfig(configAddress());
-    if (!configCache) throw new Error(`launchpad config ${CONFIG_ADDRESS} not found on ${RPC_URL}`);
+    if (!configCache) throw new Error(`launchpad config ${CONFIG_ADDRESS} not found on ${rpcEndpoint()}`);
   }
   return configCache;
 }

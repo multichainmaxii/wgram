@@ -6,7 +6,7 @@ import { Keypair } from "@solana/web3.js";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { Avatar, PairedWithGram } from "@/components/coin-ui";
-import { buildLaunch } from "@/lib/chain";
+import { buildLaunch, confirmSignature } from "@/lib/chain";
 import { isConfigured } from "@/lib/config";
 import { ImagePicker, useImagePicker } from "./ImagePicker";
 
@@ -44,8 +44,7 @@ export default function LaunchPage() {
       tx.feePayer = publicKey;
       tx.recentBlockhash = blockhash;
       const signature = await sendTransaction(tx, connection, { signers: [baseMint] });
-      const result = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed");
-      if (result.value.err) throw new Error("Launch transaction failed on-chain");
+      await confirmSignature(connection, signature, lastValidBlockHeight);
       router.push(`/coin/${baseMint.publicKey.toBase58()}`);
     } catch (err) {
       setError((err as Error).message.split("\n")[0]);

@@ -7,7 +7,7 @@ import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import type { SwapQuote2Result } from "@meteora-ag/dynamic-bonding-curve-sdk";
 import BN from "bn.js";
-import { buildTrade, fromBaseUnits, parseUnits, quoteTrade, tokenBalance, wgramMint, type Coin, type Side } from "@/lib/chain";
+import { buildTrade, confirmSignature, fromBaseUnits, parseUnits, quoteTrade, tokenBalance, wgramMint, type Coin, type Side } from "@/lib/chain";
 import { TOKEN_DECIMALS, WGRAM_DECIMALS } from "@/lib/config";
 import { tokens, wgram } from "@/lib/format";
 
@@ -86,8 +86,7 @@ export function TradePanel({ coin, pool, onTraded }: { coin: Coin; pool: PoolAcc
       tx.feePayer = publicKey;
       tx.recentBlockhash = blockhash;
       const signature = await sendTransaction(tx, connection);
-      const result = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed");
-      if (result.value.err) throw new Error("Transaction failed on-chain");
+      await confirmSignature(connection, signature, lastValidBlockHeight);
       const got = fromBaseUnits(quote.outputAmount, outDecimals);
       setStatus({ ok: true, text: side === "buy" ? `Bought ~${tokens(got)} $${coin.symbol}` : `Sold for ~${wgram(got)}` });
       setAmount("");

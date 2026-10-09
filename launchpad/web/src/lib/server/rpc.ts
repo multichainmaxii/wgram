@@ -7,13 +7,16 @@ import { Connection } from "@solana/web3.js";
 import { DynamicBondingCurveClient } from "@meteora-ag/dynamic-bonding-curve-sdk";
 import { RPC_URL } from "@/lib/config";
 
+// A site-relative NEXT_PUBLIC_RPC (the /api/rpc relay) is no use to the server itself.
+const fallback = RPC_URL.startsWith("/") ? "" : RPC_URL;
+
 const RPC_TIMEOUT_MS = 10_000;
 
 let rpc: { connection: Connection; dbc: DynamicBondingCurveClient } | null = null;
 
 export function serverRpc() {
   if (!rpc) {
-    const connection = new Connection(process.env.RPC_URL_SERVER || RPC_URL, {
+    const connection = new Connection(process.env.RPC_URL_SERVER || fallback || "http://127.0.0.1:11899", {
       commitment: "confirmed",
       // Fail fast instead of web3.js's 429 backoff; callers' caches cover the gap.
       disableRetryOnRateLimit: true,

@@ -9,6 +9,12 @@ export const BRAND = {
 export type Network = "localnet" | "devnet" | "mainnet";
 export const NETWORK = (process.env.NEXT_PUBLIC_NETWORK ?? "localnet") as Network;
 export const RPC_URL = process.env.NEXT_PUBLIC_RPC ?? "http://127.0.0.1:11899";
+// NEXT_PUBLIC_RPC may be a path on this site (the /api/rpc relay on mainnet), but web3.js
+// needs a full URL. During server rendering no browser calls happen, so any origin works.
+export function rpcEndpoint(): string {
+  if (!RPC_URL.startsWith("/")) return RPC_URL;
+  return typeof window === "undefined" ? `http://localhost${RPC_URL}` : `${window.location.origin}${RPC_URL}`;
+}
 // Our Meteora bonding-curve config; every coin launched here uses it.
 export const CONFIG_ADDRESS = process.env.NEXT_PUBLIC_CONFIG ?? "";
 export const WGRAM_MINT = process.env.NEXT_PUBLIC_WGRAM_MINT ?? "";
