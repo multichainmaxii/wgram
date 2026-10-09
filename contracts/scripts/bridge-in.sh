@@ -45,9 +45,10 @@ confirm() {
 }
 
 near_view() {  # near_view <contract> <method> [json args] -> raw JSON result
-  python3 - "$NEAR_RPC" "$1" "$2" "${3:-{\}}" <<'PY'
+  python3 - "$NEAR_RPC" "$1" "$2" "${3:-}" <<'PY'
 import base64, json, sys, urllib.request
 rpc, contract, method, args = sys.argv[1:]
+args = args or "{}"
 body = {"jsonrpc": "2.0", "id": 1, "method": "query", "params": {
     "request_type": "call_function", "finality": "final", "account_id": contract,
     "method_name": method, "args_base64": base64.b64encode(args.encode()).decode()}}
