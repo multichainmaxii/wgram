@@ -1,13 +1,14 @@
-// Stress test of the wGRAM/SOL pool plus refill bot on the local validator (DLMM cloned
+// Stress test of the wGRAM/SOL pool plus the market maker (mm.ts) on the local validator (DLMM cloned
 // from mainnet). Each scenario: a fresh stand-in wGRAM and pool seeded like mainnet
 // (SEED_USD, 90% wGRAM / 10% SOL, core + backstop via create-pool), then TOTAL_USD of
-// trading spread over DURATION minutes in 5-minute windows. After each window the bot runs
-// one rebalanceOnce cycle; its bridge legs are simulated at 0.55% + $0.32 per cycle.
+// trading spread over DURATION minutes in 5-minute windows. The bot corrects the price from
+// its reserve after every third of a window (~100 s); a bridge refill of the reserve lands one
+// window after it starts, at 0.55% + $0.32 per trip.
 //
 // Scenarios (SCENARIO): buy (all SOL buys), sell (all sells to SOL), roundtrip (buys,
 // then the same amount sold), mixed (each window a random split of buys and sells).
 //
-//   SCENARIO=mixed RPC=http://127.0.0.1:11899 pnpm exec tsx scripts/stress-pool.ts [minutes...]
+//   SCENARIO=mixed SEED_SOL_PCT=50 RPC=http://127.0.0.1:11899 pnpm exec tsx scripts/stress-mm.ts [minutes...]
 
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -15,7 +16,7 @@ import { join } from 'node:path'
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction } from '@solana/web3.js'
 import { NATIVE_MINT, burn, createMint, getAccount, getOrCreateAssociatedTokenAccount, mintTo } from '@solana/spl-token'
 import BN from 'bn.js'
-import { DLMM, poolPrice, rebalanceOnce } from './refill.ts'
+import { DLMM, correct, harvest, needsRecenter, poolPrice, recenter, reserveTarget, wallet } from './mm.ts'
 
 const RPC = process.env.RPC ?? 'http://127.0.0.1:11899'
 const TOTAL_USD = Number(process.env.TOTAL_USD ?? 250_000)
@@ -31,7 +32,8 @@ const MAX_TRADE_USD = 1_000 // one swap per $1k, like many separate traders
 const WINDOW_MIN = 5
 const RENT_SOL = 0.5 // pool and position rent plus fees, on top of the seed
 const BRIDGE_COST = 0.0055 // NEAR Intents spread + fees
-const BRIDGE_FIXED_SOL = 0.32 / SOL_USD // Omni relayer fee per cycle
+const BRIDGE_FIXED_SOL = 0.32 / SOL_USD // Omni relayer fee per trip
+const MIN_CONVERT = 1_000_000_000n // lamports: the bot's --min-convert
 
 const connection = new Connection(RPC, 'confirmed')
 const dir = join(import.meta.dirname, '..', '.local', 'stress')
@@ -73,24 +75,7 @@ async function scenario(minutes: number) {
   const pair = new PublicKey(/Pool: https:\/\/app\.meteora\.ag\/dlmm\/(\w+)/.exec(create.stdout)![1])
   const dlmm = await DLMM.create(connection, pair)
 
-  // Simulated bridges at the fair price, less costs.
   let bridgeCostSol = 0
-  const convertIn = async (lamports: bigint) => {
-    await sendAndConfirmTransaction(connection, new Transaction().add(SystemProgram.transfer({ fromPubkey: owner.publicKey, toPubkey: sink, lamports })), [owner])
-    const sol = Number(lamports) / 1e9
-    const net = sol * (1 - BRIDGE_COST) - BRIDGE_FIXED_SOL
-    bridgeCostSol += sol - net
-    const wgram = BigInt(Math.max(0, Math.floor((net / FAIR) * 1e9)))
-    await mintTo(connection, authority, mint, ownerAta.address, authority, wgram)
-    return wgram
-  }
-  const convertOut = async (wgramRaw: bigint) => {
-    await burn(connection, owner, ownerAta.address, mint, owner, wgramRaw)
-    const sol = (Number(wgramRaw) / 1e9) * FAIR
-    const net = sol * (1 - BRIDGE_COST) - BRIDGE_FIXED_SOL
-    bridgeCostSol += sol - net
-    if (net > 0) await airdrop(owner.publicKey, net)
-  }
 
   const windows = Math.max(1, Math.round(minutes / WINDOW_MIN))
   const perWindowUsd = TOTAL_USD / windows
@@ -128,15 +113,71 @@ async function scenario(minutes: number) {
     }
   }
 
+  // Bridge refills in flight: they leave the wallet now and land one window later.
+  const MAX_PENDING = Number(process.env.MAX_PENDING ?? 1)
+  let inflight: { kind: 'in' | 'out'; amount: bigint; due: number }[] = []
+  const startBridge = async (w: number) => {
+    // Count what is already on its way, or the reserve would bridge back and forth.
+    const w0 = await wallet(connection, dlmm, owner)
+    const coming = inflight.reduce(
+      (acc, p) => (p.kind === 'in' ? { ...acc, wgram: acc.wgram + BigInt(Math.floor(Number(p.amount) / FAIR)) } : { ...acc, sol: acc.sol + BigInt(Math.floor(Number(p.amount) * FAIR)) }),
+      { sol: 0n, wgram: 0n },
+    )
+    const t = reserveTarget({ sol: w0.sol + coming.sol, wgram: w0.wgram + coming.wgram }, FAIR, MIN_CONVERT)
+    if (t.bridgeIn > 0n) {
+      await sendAndConfirmTransaction(connection, new Transaction().add(SystemProgram.transfer({ fromPubkey: owner.publicKey, toPubkey: sink, lamports: t.bridgeIn })), [owner])
+      inflight.push({ kind: 'in', amount: t.bridgeIn, due: w + 1 })
+    } else if (t.bridgeOut > 0n) {
+      await burn(connection, owner, ownerAta.address, mint, owner, t.bridgeOut)
+      inflight.push({ kind: 'out', amount: t.bridgeOut, due: w + 1 })
+    }
+  }
+  const landBridge = async (w: number) => {
+    const due = inflight.filter((p) => p.due <= w)
+    inflight = inflight.filter((p) => p.due > w)
+    for (const p of due) await landOne(p)
+  }
+  const landOne = async (p: { kind: 'in' | 'out'; amount: bigint; due: number }) => {
+    if (p.kind === 'in') {
+      const sol = Number(p.amount) / 1e9
+      const net = sol * (1 - BRIDGE_COST) - BRIDGE_FIXED_SOL
+      bridgeCostSol += sol - net
+      if (net > 0) await mintTo(connection, authority, mint, ownerAta.address, authority, BigInt(Math.floor((net / FAIR) * 1e9)))
+    } else {
+      const sol = (Number(p.amount) / 1e9) * FAIR
+      const net = sol * (1 - BRIDGE_COST) - BRIDGE_FIXED_SOL
+      bridgeCostSol += sol - net
+      if (net > 0) await airdrop(owner.publicKey, net)
+    }
+    cycles.bridge = (cycles.bridge ?? 0) + 1
+  }
+  const bot = async () => {
+    try {
+      const r = await correct(connection, dlmm, owner, FAIR)
+      cycles[r.side] = (cycles[r.side] ?? 0) + 1
+      const h = await harvest(connection, dlmm, owner, FAIR, MIN_CONVERT)
+      if (h.side !== 'none') cycles[`harvest-${h.side}`] = (cycles[`harvest-${h.side}`] ?? 0) + 1
+    } catch (e) {
+      console.log(`    bot error: ${(e as Error).message.split('\n')[0]}`)
+    }
+  }
+
+  // Start the way mainnet will: re-centre into the concentrated core and form the reserve.
+  await recenter(connection, dlmm, owner, FAIR)
+
   for (let w = 0; w < windows; w++) {
     const share = SCENARIO === 'buy' ? 1 : SCENARIO === 'sell' ? 0 : SCENARIO === 'roundtrip' ? (w < windows / 2 ? 1 : 0) : rand()
-    await trade('buy', perWindowUsd * share)
-    await trade('sell', perWindowUsd * (1 - share))
-    try {
-      const r = await rebalanceOnce(connection, dlmm, owner, FAIR, convertIn, convertOut, BigInt(Math.round(SEED_SOL * 1e9)))
-      cycles[r.direction] = (cycles[r.direction] ?? 0) + 1
-    } catch (e) {
-      console.log(`    bot error in window ${w}: ${(e as Error).message.split('\n')[0]}`)
+    for (let slice = 0; slice < 3; slice++) {
+      await trade('buy', (perWindowUsd * share) / 3)
+      await trade('sell', (perWindowUsd * (1 - share)) / 3)
+      await bot()
+      if (inflight.length < MAX_PENDING) await startBridge(w)
+    }
+    await landBridge(w)
+    if (inflight.length < MAX_PENDING) await startBridge(w)
+    if (!inflight.length && (await needsRecenter(dlmm, owner, FAIR))) {
+      await recenter(connection, dlmm, owner, FAIR)
+      cycles.recenter = (cycles.recenter ?? 0) + 1
     }
     if (w % Math.max(1, Math.floor(windows / 6)) === 0 || w === windows - 1) {
       const { price } = await poolPrice(dlmm)
