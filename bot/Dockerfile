@@ -2,12 +2,12 @@
 # Build from the repo root: docker build -f bot/Dockerfile .
 # bridge-cli (Omni Bridge), for bridge-out.sh's Solana -> NEAR leg. Same commit as the
 # scripts were written against.
-FROM rust:1.96-bookworm AS bridge-cli
+FROM public.ecr.aws/docker/library/rust:1.96-bookworm AS bridge-cli
 RUN apt-get update && apt-get install -y --no-install-recommends libudev-dev pkg-config libssl-dev clang \
  && rm -rf /var/lib/apt/lists/*
 RUN cargo install --locked --git https://github.com/Near-One/bridge-sdk-rs --rev d1361ac1 bridge-cli
 
-FROM node:22-bookworm-slim
+FROM public.ecr.aws/docker/library/node:22-bookworm-slim
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl python3 bzip2 xz-utils \
