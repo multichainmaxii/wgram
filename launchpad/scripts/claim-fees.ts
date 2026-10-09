@@ -251,7 +251,12 @@ async function main() {
     return
   }
   // Pass the buyback's share of what actually arrived (not of what was listed) to its wallet.
-  const claimed = (await balances()).wgram - before.wgram
+  // RPC nodes can lag a few seconds behind a confirmed claim; wait for the balance to move.
+  let claimed = 0n
+  for (let i = 0; i < 10 && claimed <= 0n; i++) {
+    claimed = (await balances()).wgram - before.wgram
+    if (claimed <= 0n) await new Promise((r) => setTimeout(r, 2_000))
+  }
   const toBuyback = claimed > 0n ? (claimed * BigInt(BUYBACK_SHARE_PCT)) / 100n : 0n
   if (toBuyback > 0n) {
     const buybackAta = getAssociatedTokenAddressSync(config.quoteMint, buyback, true, quoteProgram)
