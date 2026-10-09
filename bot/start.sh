@@ -21,6 +21,14 @@ unset BUYBACK_KEYPAIR NEAR_KEY
 export SOL_RPC="$RPC_URL"
 
 cd /app/launchpad
+# BOT=mm runs the market maker (mm-bot.ts); otherwise the refill bot.
+if [[ "${BOT:-}" == mm ]]; then
+  exec pnpm mm-bot --rpc "$RPC_URL" --owner-keypair /run/keys/buyback.json \
+    --wgram "${WGRAM_MINT:-B1ZqtPMn2m6rgZCynGPfhWmo41h8xSwb6A2UZsB5GNq8}" \
+    --near-account "$NEAR_ACCOUNT" --near-key-file /run/keys/near.json \
+    --min-convert "${MIN_CONVERT:-1}" --interval "${INTERVAL:-30}" \
+    $([[ "${LIVE:-}" == 1 ]] && echo --live)
+fi
 exec pnpm refill-bot --rpc "$RPC_URL" --owner-keypair /run/keys/buyback.json \
   --wgram "${WGRAM_MINT:-B1ZqtPMn2m6rgZCynGPfhWmo41h8xSwb6A2UZsB5GNq8}" \
   --near-account "$NEAR_ACCOUNT" --near-key-file /run/keys/near.json \
