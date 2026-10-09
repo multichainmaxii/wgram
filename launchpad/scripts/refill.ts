@@ -148,7 +148,10 @@ export async function refillOnce(
   const { binId: activeAfter, price: after } = await poolPrice(dlmm)
   const { userPositions: now } = await dlmm.getPositionsByUserAndLbPair(owner.publicKey)
   const poolSol = now.reduce((sum: bigint, p: any) => sum + BigInt(p.positionData.totalYAmount.split('.')[0]), 0n)
-  const core = now.reduce((a: any, b: any) => (b.positionData.lowerBinId < a.positionData.lowerBinId ? b : a))
+  // Restock the position the price sits in (or the nearest one): extra positions can sit
+  // below the price (SOL added for sellers) or above it (the backstop).
+  const distance = (p: any) => Math.max(0, p.positionData.lowerBinId - activeAfter, activeAfter - p.positionData.upperBinId)
+  const core = now.reduce((a: any, b: any) => (distance(b) < distance(a) || (distance(b) === distance(a) && b.positionData.lowerBinId < a.positionData.lowerBinId) ? b : a))
   const { lowerBinId, upperBinId } = core.positionData
   const deficit = targetSol > poolSol ? targetSol - poolSol : 0n
   const sparesol = await spare()
