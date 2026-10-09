@@ -56,6 +56,16 @@ async function poolHoldings(dlmm: any, owner: Keypair): Promise<{ x: bigint; y: 
   return { x, y }
 }
 
+// RPC nodes can lag a few seconds behind a confirmed transfer; poll until a balance moves.
+async function waitForIncrease(read: () => Promise<bigint>, before: bigint, tries = 15): Promise<bigint> {
+  let now = await read()
+  for (let i = 0; i < tries && now <= before; i++) {
+    await new Promise((r) => setTimeout(r, 2_000))
+    now = await read()
+  }
+  return now
+}
+
 async function wgramBalance(connection: Connection, mint: PublicKey, owner: PublicKey): Promise<bigint> {
   return getAccount(connection, getAssociatedTokenAddressSync(mint, owner)).then((a) => a.amount, () => 0n)
 }
@@ -122,7 +132,10 @@ export async function refillOnce(
   const toConvert = await spare()
   const wgramBefore = await wgramBalance(connection, wgram, owner.publicKey)
   if (toConvert >= minConvert) await convert(toConvert)
-  const bought = (await wgramBalance(connection, wgram, owner.publicKey)) - wgramBefore
+  const bought =
+    toConvert >= minConvert
+      ? (await waitForIncrease(() => wgramBalance(connection, wgram, owner.publicKey), wgramBefore)) - wgramBefore
+      : 0n
 
   // 3. Sell wGRAM into the pool, stopping at the fair price (binary search on quotes).
   await dlmm.refetchStates()
@@ -315,7 +328,9 @@ export async function drainOnce(
   const inWallet = await wgramBalance(connection, wgram, owner.publicKey)
   const toConvert = maxConvertOut > 0n && inWallet > maxConvertOut ? maxConvertOut : inWallet
   if (toConvert < minWgram && !(maxConvertOut > 0n && toConvert === maxConvertOut)) return { action: 'idle', premium }
+  const solBefore = BigInt(await connection.getBalance(owner.publicKey))
   await convertOut(toConvert)
+  await waitForIncrease(async () => BigInt(await connection.getBalance(owner.publicKey)), solBefore)
 
   // 3. Buy wGRAM back with SOL, stopping at the fair price.
   await dlmm.refetchStates()
