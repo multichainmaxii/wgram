@@ -6,7 +6,8 @@
 #   NEAR_ACCOUNT        NEAR account that buys and wraps GRAM
 #   NEAR_KEY            its access key file JSON
 #   TARGET_SOL          SOL the pool should keep on its SOL side
-# Optional: WGRAM_MINT, MIN_CONVERT (SOL, default 1), INTERVAL (seconds, default 60),
+# Optional: WGRAM_MINT, MIN_CONVERT (SOL, default 1), MAX_CONVERT_OUT (wGRAM per sell cycle,
+#           0 = no cap), INTERVAL (seconds, default 60),
 #           LIVE=1 to act (otherwise watch-only).
 set -euo pipefail
 : "${RPC_URL:?}" "${BUYBACK_KEYPAIR:?}" "${NEAR_ACCOUNT:?}" "${NEAR_KEY:?}" "${TARGET_SOL:?}"
@@ -23,5 +24,5 @@ cd /app/launchpad
 exec pnpm refill-bot --rpc "$RPC_URL" --owner-keypair /run/keys/buyback.json \
   --wgram "${WGRAM_MINT:-B1ZqtPMn2m6rgZCynGPfhWmo41h8xSwb6A2UZsB5GNq8}" \
   --near-account "$NEAR_ACCOUNT" --near-key-file /run/keys/near.json \
-  --target-sol "$TARGET_SOL" --min-convert "${MIN_CONVERT:-1}" --interval "${INTERVAL:-60}" \
+  --target-sol "$TARGET_SOL" --min-convert "${MIN_CONVERT:-1}" --max-convert-out "${MAX_CONVERT_OUT:-0}" --interval "${INTERVAL:-60}" \
   $([[ "${LIVE:-}" == 1 ]] && echo --live)

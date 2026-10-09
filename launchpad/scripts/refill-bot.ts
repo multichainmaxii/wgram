@@ -41,6 +41,7 @@ const { values: args } = parseArgs({
     'near-key-file': { type: 'string' },
     'target-sol': { type: 'string' },
     'min-convert': { type: 'string', default: '1' }, // SOL
+    'max-convert-out': { type: 'string', default: '0' }, // wGRAM per sell cycle; 0 = no cap
     interval: { type: 'string', default: '60' },
     live: { type: 'boolean', default: false },
     once: { type: 'boolean', default: false },
@@ -107,6 +108,7 @@ async function main() {
   const wgram = new PublicKey(wgramArg)
   const targetSol = BigInt(Math.round(Number(targetArg) * 1e9))
   const minConvert = BigInt(Math.round(Number(args['min-convert']) * 1e9))
+  const maxConvertOut = BigInt(Math.round(Number(args['max-convert-out']) * 1e9))
   const connection = new Connection(rpc, 'confirmed')
   const [pair] = dlmmModule.deriveLbPairWithPresetParamWithIndexKey(PRESET, wgram, NATIVE_MINT, new PublicKey(dlmmModule.LBCLMM_PROGRAM_IDS['mainnet-beta']))
   while (!(await connection.getAccountInfo(pair))) {
@@ -131,7 +133,7 @@ async function main() {
         const act = premium >= MIN_PREMIUM ? '  -> would refill wGRAM' : premium <= -MIN_PREMIUM ? '  -> would refill SOL' : ''
         log(`${status}${act}`)
       } else {
-        const r = await rebalanceOnce(connection, dlmm, owner, fair, convertIn, convertOut, targetSol, minConvert)
+        const r = await rebalanceOnce(connection, dlmm, owner, fair, convertIn, convertOut, targetSol, minConvert, maxConvertOut)
         log(r.action === 'idle' ? `${status}  ${r.direction}`
           : r.direction === 'sell-side'
             ? `${status}  sell-side: converted ${Number(r.wgramSold) / 1e9} wGRAM to SOL, now ${(r.after * 100).toFixed(2)}%`

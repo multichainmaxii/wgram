@@ -267,6 +267,7 @@ export async function drainOnce(
   fair: number,
   convertOut: ConvertOut,
   minConvert: bigint = MIN_CONVERT, // in lamports' worth of wGRAM
+  maxConvertOut: bigint = 0n, // wGRAM (raw) per cycle; 0 = no cap. The rest is parked back.
 ): Promise<CycleResult> {
   const { binId, price } = await poolPrice(dlmm)
   const premium = price / fair - 1
@@ -311,8 +312,9 @@ export async function drainOnce(
   }
 
   // 2. Convert all wallet wGRAM to SOL.
-  const toConvert = await wgramBalance(connection, wgram, owner.publicKey)
-  if (toConvert < minWgram) return { action: 'idle', premium }
+  const inWallet = await wgramBalance(connection, wgram, owner.publicKey)
+  const toConvert = maxConvertOut > 0n && inWallet > maxConvertOut ? maxConvertOut : inWallet
+  if (toConvert < minWgram && !(maxConvertOut > 0n && toConvert === maxConvertOut)) return { action: 'idle', premium }
   await convertOut(toConvert)
 
   // 3. Buy wGRAM back with SOL, stopping at the fair price.
@@ -369,11 +371,12 @@ export async function rebalanceOnce(
   convertOut: ConvertOut,
   targetSol: bigint,
   minConvert: bigint = MIN_CONVERT,
+  maxConvertOut: bigint = 0n,
 ): Promise<CycleResult & { direction: 'buy-side' | 'sell-side' | 'park' | 'idle' }> {
   const { price } = await poolPrice(dlmm)
   const premium = price / fair - 1
   if (premium >= MIN_PREMIUM) return { direction: 'buy-side', ...(await refillOnce(connection, dlmm, owner, fair, convertIn, targetSol, minConvert)) }
-  if (premium <= -MIN_PREMIUM) return { direction: 'sell-side', ...(await drainOnce(connection, dlmm, owner, fair, convertOut, minConvert)) }
+  if (premium <= -MIN_PREMIUM) return { direction: 'sell-side', ...(await drainOnce(connection, dlmm, owner, fair, convertOut, minConvert, maxConvertOut)) }
   // At fair: leftovers in the wallet go back into the pool as they are, with no bridging.
   const wgram: PublicKey = dlmm.lbPair.tokenXMint
   const sol = BigInt(await connection.getBalance(owner.publicKey)) - SOL_RESERVE
