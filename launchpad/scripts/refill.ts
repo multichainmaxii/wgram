@@ -324,13 +324,38 @@ export async function drainOnce(
     }
   }
 
-  // 2. Convert all wallet wGRAM to SOL.
+  // Not wGRAM-heavy: the price is just low, so use the pool's own SOL to buy wGRAM back
+  // up to fair (step 3), with no bridging. Free half of the SOL just below the price.
+  if (!wgramHeavy && BigInt(await connection.getBalance(owner.publicKey)) - SOL_RESERVE < minConvert) {
+    const solBeforeFree = BigInt(await connection.getBalance(owner.publicKey))
+    const { userPositions } = await dlmm.getPositionsByUserAndLbPair(owner.publicKey)
+    for (const p of userPositions) {
+      const { lowerBinId, upperBinId, positionBinData } = p.positionData
+      const below = positionBinData
+        .filter((b: any) => b.binId < binId && b.binId >= lowerBinId && b.binId <= upperBinId && BigInt(b.positionYAmount) >= DUST_LAMPORTS)
+        .map((b: any) => b.binId)
+      if (!below.length) continue
+      const txs: Transaction[] = await dlmm
+        .removeLiquidity({ user: owner.publicKey, position: p.publicKey, fromBinId: Math.min(...below), toBinId: Math.max(...below), bps: new BN(RECYCLE_BPS), shouldClaimAndClose: false })
+        .catch((e: unknown) => {
+          console.warn(`  skipped freeing SOL: ${(e as Error).message.split('\n')[0]}`)
+          return []
+        })
+      for (const tx of txs) await send(connection, tx, [owner])
+    }
+    await waitForIncrease(async () => BigInt(await connection.getBalance(owner.publicKey)), solBeforeFree)
+  }
+
+  // 2. Convert wallet wGRAM to SOL, but only when the pool really has too much wGRAM.
   const inWallet = await wgramBalance(connection, wgram, owner.publicKey)
   const toConvert = maxConvertOut > 0n && inWallet > maxConvertOut ? maxConvertOut : inWallet
-  if (toConvert < minWgram && !(maxConvertOut > 0n && toConvert === maxConvertOut)) return { action: 'idle', premium }
-  const solBefore = BigInt(await connection.getBalance(owner.publicKey))
-  await convertOut(toConvert)
-  await waitForIncrease(async () => BigInt(await connection.getBalance(owner.publicKey)), solBefore)
+  let converted = 0n
+  if (wgramHeavy && (toConvert >= minWgram || (maxConvertOut > 0n && toConvert === maxConvertOut))) {
+    const solBefore = BigInt(await connection.getBalance(owner.publicKey))
+    await convertOut(toConvert)
+    await waitForIncrease(async () => BigInt(await connection.getBalance(owner.publicKey)), solBefore)
+    converted = toConvert
+  }
 
   // 3. Buy wGRAM back with SOL, stopping at the fair price.
   await dlmm.refetchStates()
@@ -373,7 +398,7 @@ export async function drainOnce(
     BigInt(await connection.getBalance(owner.publicKey)) - SOL_RESERVE,
     await wgramBalance(connection, wgram, owner.publicKey),
   )
-  return { action: 'refilled', premium, after: after / fair - 1, solConverted: 0n, wgramBought: spend, wgramSold: toConvert, solCarried: 0n }
+  return { action: 'refilled', premium, after: after / fair - 1, solConverted: 0n, wgramBought: spend, wgramSold: converted, solCarried: 0n }
 }
 
 // One bot cycle: the price shows which side is short.
