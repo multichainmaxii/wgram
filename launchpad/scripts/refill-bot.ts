@@ -1,7 +1,8 @@
 // Mainnet runner for the refill bot (core logic in refill.ts). Every --interval seconds
 // it compares the wGRAM/SOL pool's price with the fair GRAM price (a live NEAR Intents
-// quote) and, when the pool trades at a premium or SOL has piled up, recycles that SOL
-// into wGRAM through contracts/scripts/bridge-in.sh and restocks the pool.
+// quote) and rebalances it (refill.ts rebalanceOnce): a premium means buyers drained the
+// wGRAM, so bridge-in.sh turns SOL into wGRAM; a discount means sellers drained the SOL, so
+// bridge-out.sh turns wGRAM into SOL.
 //
 // Watch-only by default: it logs what it would do and sends nothing. --live acts.
 //
@@ -19,11 +20,13 @@ import { parseArgs } from 'node:util'
 import { createRequire } from 'node:module'
 import { Connection, Keypair, PublicKey } from '@solana/web3.js'
 import { NATIVE_MINT } from '@solana/spl-token'
-import { DLMM, MIN_PREMIUM, poolPrice, refillOnce } from './refill.ts'
+import { DLMM, MIN_PREMIUM, poolPrice, rebalanceOnce } from './refill.ts'
 
 const dlmmModule = createRequire(import.meta.url)('@meteora-ag/dlmm')
 const PRESET = new PublicKey('w1rfAh2zApVM55NnpEUxZL5L9EjP4RyAyhjwHraLBQE') // same tier as create-pool
-const BRIDGE_IN = resolve(dirname(fileURLToPath(import.meta.url)), '../../contracts/scripts/bridge-in.sh')
+const SCRIPTS = resolve(dirname(fileURLToPath(import.meta.url)), '../../contracts/scripts')
+const BRIDGE_IN = resolve(SCRIPTS, 'bridge-in.sh')
+const BRIDGE_OUT = resolve(SCRIPTS, 'bridge-out.sh')
 const ONECLICK = 'https://1click.chaindefuser.com/v0'
 const GRAM_ASSET = 'nep245:v2_1.omni.hot.tg:1117_'
 const SOL_ASSET = 'nep141:sol.omft.near'
@@ -82,6 +85,18 @@ function bridgeIn(lamports: bigint, env: NodeJS.ProcessEnv): Promise<bigint> {
   })
 }
 
+// Runs bridge-out.sh for this much wGRAM (raw units), unattended. It waits until the SOL arrives.
+function bridgeOut(wgramRaw: bigint, env: NodeJS.ProcessEnv): Promise<void> {
+  const amount = (Number(wgramRaw) / 1e9).toFixed(9)
+  log(`bridge-out ${amount} wGRAM`)
+  return new Promise((ok, fail) => {
+    const child = spawn('bash', [BRIDGE_OUT, amount], { env: { ...process.env, ...env, YES: '1' }, stdio: ['ignore', 'pipe', 'pipe'] })
+    child.stdout.on('data', (d) => process.stdout.write(`    ${d}`))
+    child.stderr.on('data', (d) => process.stdout.write(`    ${d}`))
+    child.on('exit', (code) => (code === 0 ? ok() : fail(new Error(`bridge-out exited with ${code}; it resumes from its saved state next cycle`))))
+  })
+}
+
 async function main() {
   const { rpc, 'owner-keypair': ownerPath, wgram: wgramArg, 'near-account': nearAccount, 'near-key-file': nearKey, 'target-sol': targetArg } = args
   if (!rpc || !ownerPath || !wgramArg || !nearAccount || !nearKey || !targetArg) {
@@ -101,7 +116,8 @@ async function main() {
   }
   const dlmm = await DLMM.create(connection, pair)
   const env = { NEAR_ACCOUNT: nearAccount, NEAR_KEY_FILE: fromInvocation(nearKey), SOL_KEYPAIR: ownerFile, SOL_RECIPIENT: owner.publicKey.toBase58() }
-  const convert = (lamports: bigint) => bridgeIn(lamports, env)
+  const convertIn = (lamports: bigint) => bridgeIn(lamports, env)
+  const convertOut = (wgramRaw: bigint) => bridgeOut(wgramRaw, env)
 
   log(`refill-bot ${args.live ? 'LIVE' : 'WATCH-ONLY (add --live to act)'}: pool ${pair.toBase58()}, owner ${owner.publicKey.toBase58()}`)
   for (;;) {
@@ -112,12 +128,14 @@ async function main() {
       const spare = BigInt(await connection.getBalance(owner.publicKey))
       const status = `pool ${price.toPrecision(5)} vs fair ${fair.toPrecision(5)} SOL/wGRAM (${(premium * 100).toFixed(2)}%), owner ${(Number(spare) / 1e9).toFixed(3)} SOL`
       if (!args.live) {
-        const act = premium >= MIN_PREMIUM || spare > minConvert + 50_000_000n
-        log(`${status}${act ? '  -> would refill' : ''}`)
+        const act = premium >= MIN_PREMIUM ? '  -> would refill wGRAM' : premium <= -MIN_PREMIUM ? '  -> would refill SOL' : ''
+        log(`${status}${act}`)
       } else {
-        const r = await refillOnce(connection, dlmm, owner, fair, convert, targetSol, minConvert)
-        log(r.action === 'idle' ? `${status}  idle`
-          : `${status}  refilled: converted ${Number(r.solConverted) / 1e9} SOL, sold ${Number(r.wgramSold) / 1e9} wGRAM, now ${(r.after * 100).toFixed(2)}%, carrying ${Number(r.solCarried) / 1e9} SOL`)
+        const r = await rebalanceOnce(connection, dlmm, owner, fair, convertIn, convertOut, targetSol, minConvert)
+        log(r.action === 'idle' ? `${status}  ${r.direction}`
+          : r.direction === 'sell-side'
+            ? `${status}  sell-side: converted ${Number(r.wgramSold) / 1e9} wGRAM to SOL, now ${(r.after * 100).toFixed(2)}%`
+            : `${status}  buy-side: converted ${Number(r.solConverted) / 1e9} SOL, sold ${Number(r.wgramSold) / 1e9} wGRAM, now ${(r.after * 100).toFixed(2)}%, carrying ${Number(r.solCarried) / 1e9} SOL`)
       }
     } catch (e) {
       log(`error: ${(e as Error).message.split('\n')[0]}`)

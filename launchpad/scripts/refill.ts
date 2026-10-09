@@ -44,6 +44,18 @@ export async function poolPrice(dlmm: any): Promise<{ binId: number; price: numb
   return { binId: active.binId, price: Number(active.pricePerToken) }
 }
 
+// wGRAM (raw) and SOL (lamports) held across the owner's positions.
+async function poolHoldings(dlmm: any, owner: Keypair): Promise<{ x: bigint; y: bigint }> {
+  const { userPositions } = await dlmm.getPositionsByUserAndLbPair(owner.publicKey)
+  let x = 0n
+  let y = 0n
+  for (const p of userPositions) {
+    x += BigInt(String(p.positionData.totalXAmount).split('.')[0])
+    y += BigInt(String(p.positionData.totalYAmount).split('.')[0])
+  }
+  return { x, y }
+}
+
 async function wgramBalance(connection: Connection, mint: PublicKey, owner: PublicKey): Promise<bigint> {
   return getAccount(connection, getAssociatedTokenAddressSync(mint, owner)).then((a) => a.amount, () => 0n)
 }
@@ -147,7 +159,11 @@ export async function refillOnce(
   await dlmm.refetchStates()
   const { binId: activeAfter, price: after } = await poolPrice(dlmm)
   const { userPositions: now } = await dlmm.getPositionsByUserAndLbPair(owner.publicKey)
-  const poolSol = now.reduce((sum: bigint, p: any) => sum + BigInt(p.positionData.totalYAmount.split('.')[0]), 0n)
+  // Keep the SOL side at half the pool's value (at least targetSol), so sellers find depth too.
+  const holdings = await poolHoldings(dlmm, owner)
+  const poolSol = holdings.y
+  const halfValue = BigInt(Math.floor((Number(holdings.x) * fair + Number(holdings.y)) / 2))
+  if (halfValue > targetSol) targetSol = halfValue
   // Restock the position the price sits in (or the nearest one): extra positions can sit
   // below the price (SOL added for sellers) or above it (the backstop).
   const distance = (p: any) => Math.max(0, p.positionData.lowerBinId - activeAfter, activeAfter - p.positionData.upperBinId)
@@ -182,4 +198,188 @@ export async function refillOnce(
     await send(connection, tx, [owner])
   }
   return { action: 'refilled', premium, after: after / fair - 1, solConverted: toConvert >= minConvert ? toConvert : 0n, wgramBought: bought, wgramSold: sell, solCarried: await spare() }
+}
+
+// --- Sell side ------------------------------------------------------------------------------
+// Users sell coins for SOL too: that pushes wGRAM into the pool and pulls SOL out, so wGRAM
+// trades below fair and the SOL side can run dry. The mirror of refillOnce:
+//   1. withdraw half of the wGRAM sitting above the price (the other half must stay so
+//      step 3 has something to buy),
+//   2. convert it, plus any wGRAM carried over, to SOL at the fair price (bridge-out.sh),
+//   3. buy wGRAM back from the pool with that SOL, at most up to the fair price,
+//   4. put the wGRAM bought back above the price and all spare SOL just below it.
+
+export type ConvertOut = (wgramRaw: bigint) => Promise<void> // wGRAM in the wallet -> SOL in the wallet
+
+async function positionCovering(connection: Connection, dlmm: any, owner: Keypair, bin: number): Promise<any> {
+  const { userPositions } = await dlmm.getPositionsByUserAndLbPair(owner.publicKey)
+  const hit = userPositions.find((p: any) => p.positionData.lowerBinId <= bin && bin <= p.positionData.upperBinId)
+  if (hit) return hit.publicKey
+  // Nothing covers this bin (the price ran past every position): open one around it.
+  const position = Keypair.generate()
+  const tx: Transaction = await dlmm.initializePositionAndAddLiquidityByStrategy({
+    positionPubKey: position.publicKey,
+    totalXAmount: new BN(0),
+    totalYAmount: new BN(0),
+    strategy: { minBinId: bin - 34, maxBinId: bin + 34, strategyType: StrategyType.Spot },
+    user: owner.publicKey,
+    slippage: 1,
+  })
+  await send(connection, tx, [owner, position])
+  await dlmm.refetchStates()
+  return position.publicKey
+}
+
+// Adds wallet SOL just below the price and wallet wGRAM just above it, opening a position
+// where none covers those bins.
+export async function park(connection: Connection, dlmm: any, owner: Keypair, solLamports: bigint, wgramRaw: bigint) {
+  const { binId } = await poolPrice(dlmm)
+  if (solLamports > 0n) {
+    const position = await positionCovering(connection, dlmm, owner, binId - 1)
+    const tx: Transaction = await dlmm.addLiquidityByStrategy({
+      positionPubKey: position,
+      totalXAmount: new BN(0),
+      totalYAmount: new BN(solLamports.toString()),
+      strategy: { minBinId: binId - RESTOCK_BINS, maxBinId: binId - 1, strategyType: StrategyType.Spot },
+      user: owner.publicKey,
+      slippage: 1,
+    })
+    await send(connection, tx, [owner])
+  }
+  if (wgramRaw > 0n) {
+    const position = await positionCovering(connection, dlmm, owner, binId + RESTOCK_BINS)
+    const tx: Transaction = await dlmm.addLiquidityByStrategy({
+      positionPubKey: position,
+      totalXAmount: new BN(wgramRaw.toString()),
+      totalYAmount: new BN(0),
+      strategy: { minBinId: binId, maxBinId: binId + RESTOCK_BINS, strategyType: StrategyType.Spot, singleSidedX: true },
+      user: owner.publicKey,
+      slippage: 1,
+    })
+    await send(connection, tx, [owner])
+  }
+}
+
+export async function drainOnce(
+  connection: Connection,
+  dlmm: any,
+  owner: Keypair,
+  fair: number,
+  convertOut: ConvertOut,
+  minConvert: bigint = MIN_CONVERT, // in lamports' worth of wGRAM
+): Promise<CycleResult> {
+  const { binId, price } = await poolPrice(dlmm)
+  const premium = price / fair - 1
+  const wgram: PublicKey = dlmm.lbPair.tokenXMint
+  const minWgram = BigInt(Math.ceil(Number(minConvert) / fair))
+  const carried = await wgramBalance(connection, wgram, owner.publicKey)
+
+  // 1. Withdraw half of the wGRAM above the price (skipping dust), unless a carry is waiting
+  //    or the pool is not wGRAM-heavy (its wGRAM worth more than half the pool).
+  const held = await poolHoldings(dlmm, owner)
+  const wgramHeavy = Number(held.x) * fair > Number(held.y)
+  if (carried < minWgram && wgramHeavy) {
+    const { userPositions } = await dlmm.getPositionsByUserAndLbPair(owner.publicKey)
+    const dust = BigInt(Math.ceil(Number(DUST_LAMPORTS) / fair))
+    for (const p of userPositions) {
+      const { lowerBinId, upperBinId, positionBinData } = p.positionData
+      const above = positionBinData
+        .filter((b: any) => b.binId > binId && b.binId >= lowerBinId && b.binId <= upperBinId)
+        .sort((a: any, b: any) => a.binId - b.binId)
+      const ranges: [number, number][] = []
+      let start: number | null = null
+      for (const [i, bin] of above.entries()) {
+        const real = BigInt(bin.positionXAmount) >= dust
+        if (real && start === null) start = bin.binId
+        const next = above[i + 1]
+        const runEnds = !real || !next || next.binId !== bin.binId + 1 || BigInt(next.positionXAmount) < dust
+        if (start !== null && runEnds) {
+          ranges.push([start, real ? bin.binId : bin.binId - 1])
+          start = null
+        }
+      }
+      for (const [from, to] of ranges) {
+        const txs: Transaction[] = await dlmm
+          .removeLiquidity({ user: owner.publicKey, position: p.publicKey, fromBinId: from, toBinId: to, bps: new BN(RECYCLE_BPS), shouldClaimAndClose: false })
+          .catch((e: unknown) => {
+            console.warn(`  skipped bins ${from}..${to}: ${(e as Error).message.split('\n')[0]}`)
+            return []
+          })
+        for (const tx of txs) await send(connection, tx, [owner])
+      }
+    }
+  }
+
+  // 2. Convert all wallet wGRAM to SOL.
+  const toConvert = await wgramBalance(connection, wgram, owner.publicKey)
+  if (toConvert < minWgram) return { action: 'idle', premium }
+  await convertOut(toConvert)
+
+  // 3. Buy wGRAM back with SOL, stopping at the fair price.
+  await dlmm.refetchStates()
+  const spareSol = BigInt(await connection.getBalance(owner.publicKey)) - SOL_RESERVE
+  const binArrays = await dlmm.getBinArrayForSwap(false, 8)
+  const endPrice = (lamports: bigint) => Number(dlmm.swapQuote(new BN(lamports.toString()), false, new BN(100), binArrays, true).endPrice)
+  let spend = 0n
+  if ((await poolPrice(dlmm)).price < fair * (1 - MIN_PREMIUM / 2) && spareSol > 0n) {
+    let lo = 0n
+    let hi = spareSol
+    if (endPrice(hi) <= fair) lo = hi
+    else for (let i = 0; i < 24; i++) {
+      const mid = (lo + hi) / 2n
+      if (endPrice(mid) <= fair) lo = mid
+      else hi = mid
+    }
+    spend = lo
+  }
+  if (spend > 0n) {
+    const quote = dlmm.swapQuote(new BN(spend.toString()), false, new BN(100), binArrays, true)
+    const tx: Transaction = await dlmm.swap({
+      inToken: dlmm.lbPair.tokenYMint,
+      outToken: wgram,
+      inAmount: quote.consumedInAmount,
+      minOutAmount: quote.minOutAmount,
+      lbPair: dlmm.pubkey,
+      user: owner.publicKey,
+      binArraysPubkey: quote.binArraysPubkey,
+    })
+    await send(connection, tx, [owner])
+  }
+
+  // 4. wGRAM bought back goes above the price, every spare SOL just below it.
+  await dlmm.refetchStates()
+  const after = (await poolPrice(dlmm)).price
+  await park(
+    connection,
+    dlmm,
+    owner,
+    BigInt(await connection.getBalance(owner.publicKey)) - SOL_RESERVE,
+    await wgramBalance(connection, wgram, owner.publicKey),
+  )
+  return { action: 'refilled', premium, after: after / fair - 1, solConverted: 0n, wgramBought: spend, wgramSold: toConvert, solCarried: 0n }
+}
+
+// One bot cycle: the price shows which side is short.
+export async function rebalanceOnce(
+  connection: Connection,
+  dlmm: any,
+  owner: Keypair,
+  fair: number,
+  convertIn: Convert,
+  convertOut: ConvertOut,
+  targetSol: bigint,
+  minConvert: bigint = MIN_CONVERT,
+): Promise<CycleResult & { direction: 'buy-side' | 'sell-side' | 'park' | 'idle' }> {
+  const { price } = await poolPrice(dlmm)
+  const premium = price / fair - 1
+  if (premium >= MIN_PREMIUM) return { direction: 'buy-side', ...(await refillOnce(connection, dlmm, owner, fair, convertIn, targetSol, minConvert)) }
+  if (premium <= -MIN_PREMIUM) return { direction: 'sell-side', ...(await drainOnce(connection, dlmm, owner, fair, convertOut, minConvert)) }
+  // At fair: leftovers in the wallet go back into the pool as they are, with no bridging.
+  const wgram: PublicKey = dlmm.lbPair.tokenXMint
+  const sol = BigInt(await connection.getBalance(owner.publicKey)) - SOL_RESERVE
+  const wg = await wgramBalance(connection, wgram, owner.publicKey)
+  const minWgram = BigInt(Math.ceil(Number(minConvert) / fair))
+  if (sol < minConvert && wg < minWgram) return { direction: 'idle', action: 'idle', premium }
+  await park(connection, dlmm, owner, sol >= minConvert ? sol : 0n, wg >= minWgram ? wg : 0n)
+  return { direction: 'park', action: 'idle', premium }
 }
