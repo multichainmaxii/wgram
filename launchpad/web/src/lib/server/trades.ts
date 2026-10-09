@@ -53,7 +53,7 @@ async function loadTrades(mint: string): Promise<Trade[]> {
   for (let i = 0; i < missing.length; i += BATCH) batches.push(missing.slice(i, i + BATCH));
   await Promise.all(
     batches.map(async (batch) => {
-      const txs = await serverRpc().connection.getParsedTransactions(batch.map((s) => s.signature), { maxSupportedTransactionVersion: 0 });
+      const txs = await serverRpc().connection.getParsedTransactions(batch.map((s) => s.signature), { maxSupportedTransactionVersion: 1 });
       txs.forEach((tx, i) => {
         if (!tx) return; // not served by the node yet; retried next time
         const trade = toTrade(tx, batch[i], pool);

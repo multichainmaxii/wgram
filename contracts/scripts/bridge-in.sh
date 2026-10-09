@@ -121,6 +121,12 @@ echo "  wGRAM goes to   $SOL_RECIPIENT on Solana"
 
 # --- 1. swap SOL for GRAM on NEAR Intents --------------------------------------------------
 
+# A deposit address saved without SENT means its transfer never went through; start over.
+if [[ -n "${DEPOSIT:-}" && -z "${SENT:-}" ]]; then
+  echo "  previous deposit to $DEPOSIT was never sent; requesting a new quote"
+  rm -f "$STATE"; DEPOSIT=""; GRAM_BEFORE=""
+fi
+
 if [[ -z "${DEPOSIT:-}" ]]; then
   q=$(quote true "$LAMPORTS")
   out=$(printf '%s' "$q" | python3 -c 'import json,sys; q=json.load(sys.stdin)["quote"]; print(q["amountOutFormatted"], q["amountOutUsd"][:8], q["amountInUsd"][:8])')
@@ -136,6 +142,7 @@ if [[ -z "${DEPOSIT:-}" ]]; then
   save GRAM_BEFORE "$GRAM_BEFORE"
   solana transfer "$DEPOSIT" "$SOL_AMOUNT" --keypair "$SOL_KEYPAIR" --url "$SOL_RPC" \
     --allow-unfunded-recipient --commitment confirmed || die "SOL transfer failed; re-run to retry"
+  save SENT 1
 fi
 
 if [[ -z "${SWAPPED:-}" ]]; then

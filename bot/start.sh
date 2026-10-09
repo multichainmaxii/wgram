@@ -16,6 +16,9 @@ printf '%s' "$BUYBACK_KEYPAIR" > /run/keys/buyback.json
 printf '%s' "$NEAR_KEY" > /run/keys/near.json
 unset BUYBACK_KEYPAIR NEAR_KEY
 
+# bridge-in's Solana CLI calls use the same keyed RPC: the public one rejects cloud servers.
+export SOL_RPC="$RPC_URL"
+
 cd /app/launchpad
 exec pnpm refill-bot --rpc "$RPC_URL" --owner-keypair /run/keys/buyback.json \
   --wgram "${WGRAM_MINT:-B1ZqtPMn2m6rgZCynGPfhWmo41h8xSwb6A2UZsB5GNq8}" \

@@ -66,7 +66,9 @@ export async function refillOnce(
 
   // 1. Withdraw half of the SOL sitting below the active bin, from every position.
   const { userPositions } = await dlmm.getPositionsByUserAndLbPair(owner.publicKey)
-  if (premium >= MIN_PREMIUM) {
+  // If last cycle's conversion failed, its SOL is still waiting in the wallet: convert
+  // that first instead of pulling more out of the pool.
+  if (premium >= MIN_PREMIUM && carried < minConvert) {
     for (const p of userPositions) {
       const { lowerBinId, upperBinId, positionBinData } = p.positionData
       const below = positionBinData
