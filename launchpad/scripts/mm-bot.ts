@@ -3,12 +3,14 @@
 //   2. moves the pool's surplus side into the reserve when the pool is lopsided,
 //   3. starts a bridge to rebalance the reserve if none is running (bridge-in.sh /
 //      bridge-out.sh, in the background: the loop keeps correcting meanwhile),
-//   4. re-centres the core when GRAM/SOL has moved and no bridge is running.
+//   4. re-centres the core when GRAM/SOL has moved and no bridge is running,
+//   5. graduates finished coins under --config into their Meteora pools (migrate.ts), since
+//      Meteora's keepers don't yet do it for coins paired with wGRAM.
 //
 // Watch-only by default: it logs what it would do and sends nothing. --live acts.
 //
 //   pnpm mm-bot --rpc <url> --owner-keypair <buyback.json> --wgram <mint> \
-//     --near-account <id> --near-key-file <path> [--min-convert 1] [--interval 30] [--live]
+//     --near-account <id> --near-key-file <path> [--config <launchpad config>] [--min-convert 1] [--interval 30] [--live]
 
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
@@ -19,6 +21,7 @@ import { createRequire } from 'node:module'
 import { Connection, Keypair, PublicKey } from '@solana/web3.js'
 import { NATIVE_MINT } from '@solana/spl-token'
 import { DLMM, TOLERANCE, correct, harvest, holdings, needsRecenter, poolPrice, recenter, reserveTarget, wallet } from './mm.ts'
+import { migrateGraduated } from './migrate.ts'
 
 const dlmmModule = createRequire(import.meta.url)('@meteora-ag/dlmm')
 const PRESET = new PublicKey('w1rfAh2zApVM55NnpEUxZL5L9EjP4RyAyhjwHraLBQE') // same tier as create-pool
@@ -33,6 +36,7 @@ const { values: args } = parseArgs({
     wgram: { type: 'string' },
     'near-account': { type: 'string' },
     'near-key-file': { type: 'string' },
+    config: { type: 'string' }, // the launchpad's bonding-curve config; enables graduations
     'min-convert': { type: 'string', default: '1' }, // SOL; smaller bridge trips aren't worth the fee
     interval: { type: 'string', default: '30' },
     live: { type: 'boolean', default: false },
@@ -65,6 +69,22 @@ async function fairPrice(nearAccount: string, refundTo: string): Promise<number>
   return 1 / out
 }
 
+// Every bridge trip pays NEAR gas and Omni's relayer fee (about 0.06 NEAR), so a dry NEAR
+// account silently stops all bridging. Checked every 10 minutes; warns below LOW_NEAR.
+const LOW_NEAR = 1.5
+let nearCheckedAt = 0
+async function warnIfLowNear(nearAccount: string) {
+  if (Date.now() - nearCheckedAt < 10 * 60_000) return
+  nearCheckedAt = Date.now()
+  const res = await fetch('https://rpc.mainnet.near.org', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'query', params: { request_type: 'view_account', finality: 'final', account_id: nearAccount } }),
+  })
+  const near = Number(BigInt((await res.json()).result.amount) / 10n ** 20n) / 1e4
+  if (near < LOW_NEAR) log(`LOW NEAR: ${nearAccount} has ${near} NEAR; bridging stops when it runs out (about 0.06 NEAR per trip). Send it NEAR.`)
+}
+
 // One bridge trip at a time, run in the background.
 let bridge: null | { kind: string; started: number; done: Promise<void> } = null
 function startBridge(script: string, amount: string, kind: string, env: NodeJS.ProcessEnv) {
@@ -95,8 +115,21 @@ async function main() {
   const dlmm = await DLMM.create(connection, pair)
   const env = { NEAR_ACCOUNT: nearAccount, NEAR_KEY_FILE: fromInvocation(nearKey), SOL_KEYPAIR: ownerFile, SOL_RECIPIENT: owner.publicKey.toBase58() }
   log(`mm-bot ${args.live ? 'LIVE' : 'WATCH-ONLY (add --live to act)'}: pool ${pair.toBase58()}, owner ${owner.publicKey.toBase58()}`)
+  const launchpadConfig = args.config ? new PublicKey(args.config) : null
+  if (launchpadConfig) log(`graduating finished coins under config ${launchpadConfig.toBase58()}`)
 
   for (;;) {
+    await warnIfLowNear(nearAccount).catch(() => {})
+    // Graduations first and on their own: a stuck migration must never stop market making.
+    if (launchpadConfig) {
+      try {
+        for (const g of await migrateGraduated(connection, owner, launchpadConfig, args.live)) {
+          log(g.signature ? `graduated ${g.mint} into DAMM v2 ${g.dammPool} (${g.signature})` : g.error ? `graduation of ${g.mint} failed: ${g.error}` : `would graduate ${g.mint}`)
+        }
+      } catch (e) {
+        log(`graduation check failed: ${(e as Error).message.split('\n')[0]}`)
+      }
+    }
     try {
       const fair = await fairPrice(nearAccount, owner.publicKey.toBase58())
       const { price } = await poolPrice(dlmm)

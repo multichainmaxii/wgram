@@ -29,6 +29,7 @@ OMNI="omni.bridge.near"
 WGRAM_MINT="B1ZqtPMn2m6rgZCynGPfhWmo41h8xSwb6A2UZsB5GNq8"
 ONECLICK="https://1click.chaindefuser.com/v0"
 OMNI_API="https://mainnet.api.bridge.nearone.org/api/v3"
+OMNI_SOLANA_PROGRAM="dahPEoZGXfyV58JqqH85okdHmpN8U2q8owgPUXSCPxe"  # mints bridged tokens on Solana
 NEAR_RPC="${NEAR_RPC:-https://rpc.mainnet.near.org}"
 SOL_RPC="${SOL_RPC:-https://api.mainnet-beta.solana.com}"
 STATE="${BRIDGE_IN_STATE:-$(cd "$(dirname "$0")" && pwd)/.bridge-in-state}"
@@ -81,6 +82,65 @@ print(sum(int(a["account"]["data"]["parsed"]["info"]["tokenAmount"]["amount"]) f
 PY
 }
 
+# Did Omni Bridge deliver exactly <amount> raw wGRAM to SOL_RECIPIENT at or after <since>
+# (unix seconds; 0 = any recent time)? Looks for Omni's own minting transaction rather than a
+# balance increase, because the market maker spends the wallet's wGRAM while a trip is in
+# flight. Prints the signature and succeeds if found.
+sol_omni_arrived() {
+  python3 - "$SOL_RPC" "$SOL_RECIPIENT" "$WGRAM_MINT" "$OMNI_SOLANA_PROGRAM" "$1" "$2" "$STATE.seen" <<'PY'
+import json, sys, urllib.request
+rpc, owner, mint, program, amount, since, seen_file = sys.argv[1:]
+amount, since = int(amount), int(since)
+def call(method, params):
+    req = urllib.request.Request(rpc, data=json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode(),
+                                 headers={"Content-Type": "application/json"})
+    return json.load(urllib.request.urlopen(req, timeout=30)).get("result")
+# Transactions already checked on earlier polls of this trip are skipped.
+try:
+    seen = set(open(seen_file).read().split())
+except OSError:
+    seen = set()
+found = None
+accounts = [a["pubkey"] for a in call("getTokenAccountsByOwner", [owner, {"mint": mint}, {"encoding": "jsonParsed", "commitment": "confirmed"}])["value"]]
+for ata in accounts:
+    before, scanned = None, 0
+    while found is None and scanned < 2000:
+        opts = {"limit": 200, "commitment": "confirmed", **({"before": before} if before else {})}
+        page = call("getSignaturesForAddress", [ata, opts]) or []
+        if not page:
+            break
+        for sig in page:
+            if since and (sig.get("blockTime") or 0) < since:
+                page = []  # older than the trip: stop paging
+                break
+            if sig.get("err") or sig["signature"] in seen:
+                continue
+            tx = call("getTransaction", [sig["signature"], {"encoding": "jsonParsed", "commitment": "confirmed", "maxSupportedTransactionVersion": 0}])
+            if not tx:
+                continue  # not visible yet; look again next poll
+            seen.add(sig["signature"])
+            keys = [k["pubkey"] if isinstance(k, dict) else k for k in tx["transaction"]["message"]["accountKeys"]]
+            if program not in keys or ata not in keys:
+                continue
+            i = keys.index(ata)
+            bal = lambda rows: next((int(r["uiTokenAmount"]["amount"]) for r in rows or [] if r["accountIndex"] == i and r["mint"] == mint), 0)
+            if bal(tx["meta"].get("postTokenBalances")) - bal(tx["meta"].get("preTokenBalances")) == amount:
+                found = sig["signature"]
+                break
+        if found or not page:
+            break
+        scanned += len(page)
+        before = page[-1]["signature"]
+    if found:
+        break
+open(seen_file, "w").write("\n".join(seen))
+if found:
+    print(found)
+    sys.exit(0)
+sys.exit(1)
+PY
+}
+
 quote() {  # quote <dry true|false> <lamports> -> 1Click quote JSON
   local deadline
   deadline=$(python3 -c 'import datetime; print((datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S.000Z"))')
@@ -97,7 +157,7 @@ quote() {  # quote <dry true|false> <lamports> -> 1Click quote JSON
 
 DRY=0
 case "${1:-}" in
-  --reset) rm -f "$STATE"; echo "state cleared"; exit 0 ;;
+  --reset) rm -f "$STATE" "$STATE.seen"; echo "state cleared"; exit 0 ;;
   --dry-run) DRY=1; shift ;;
 esac
 SOL_AMOUNT="${1:-}"
@@ -124,7 +184,7 @@ echo "  wGRAM goes to   $SOL_RECIPIENT on Solana"
 # A deposit address saved without SENT means its transfer never went through; start over.
 if [[ -n "${DEPOSIT:-}" && -z "${SENT:-}" ]]; then
   echo "  previous deposit to $DEPOSIT was never sent; requesting a new quote"
-  rm -f "$STATE"; DEPOSIT=""; GRAM_BEFORE=""
+  rm -f "$STATE" "$STATE.seen"; DEPOSIT=""; GRAM_BEFORE=""
 fi
 
 if [[ -z "${DEPOSIT:-}" ]]; then
@@ -229,16 +289,18 @@ PY
   save SOL_BEFORE "$SOL_BEFORE"
   confirm "Step 4: bridge $(fmt9 "$SWAPPED") wGRAM to $SOL_RECIPIENT on Solana (relayer fee $near_fee NEAR)."
   msg="{\\\"recipient\\\":\\\"sol:$SOL_RECIPIENT\\\",\\\"fee\\\":\\\"0\\\",\\\"native_token_fee\\\":\\\"$fee\\\"}"
+  BRIDGED_AT=$(( $(date +%s) - 120 ))  # allow for clock skew
   near_tx "$WRAPPER" ft_transfer_call "{\"receiver_id\":\"$OMNI\",\"amount\":\"$SWAPPED\",\"msg\":\"$msg\"}" '1 yoctoNEAR' '300.0 Tgas'
+  save BRIDGED_AT "$BRIDGED_AT"
   save BRIDGED 1
 fi
 
 log "Waiting for the relayer to finish on Solana (usually a few minutes)"
 for _ in $(seq 1 60); do
-  now=$(sol_wgram)
-  if python3 -c 'import sys; sys.exit(0 if int(sys.argv[1]) - int(sys.argv[2]) >= int(sys.argv[3]) else 1)' "$now" "$SOL_BEFORE" "$SWAPPED"; then
-    echo "  done: $SOL_RECIPIENT now holds $(fmt9 "$now") wGRAM on Solana"
-    rm -f "$STATE"
+  # Trips saved before BRIDGED_AT existed match by exact amount among recent arrivals.
+  if arrival=$(sol_omni_arrived "$SWAPPED" "${BRIDGED_AT:-0}"); then
+    echo "  done: $(fmt9 "$SWAPPED") wGRAM reached $SOL_RECIPIENT on Solana ($arrival)"
+    rm -f "$STATE" "$STATE.seen"
     exit 0
   fi
   sleep 15

@@ -36,7 +36,7 @@ const METADATA_DIR = join(WEB, '.data', 'metadata')
 const WGRAM = 10 ** 9
 
 const DEMO = [
-  { name: 'Durov Dog', symbol: 'DUROV', description: 'The dog that runs Telegram (allegedly).', buys: [900, 1400, 700, 2600] },
+  { name: 'Pavel', symbol: 'PAVEL', description: 'The first coin on the curve.', buys: [900, 1400, 700, 2600] },
   { name: 'Gram Cat', symbol: 'GCAT', description: 'Paired with GRAM, purring on Solana.', buys: [300, 250, 600] },
   { name: 'Notcoin Not', symbol: 'NOTNOT', description: 'Not a coin. Definitely not.', buys: [120, 80] },
   { name: 'Ton Ape', symbol: 'TAPE', description: 'Apes together, bridged.', buys: [1500, 900, 400] },

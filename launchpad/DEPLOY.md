@@ -105,7 +105,10 @@ pnpm create-config --rpc "$RPC" --wgram $WGRAM --platform-keypair $KEY --send   
 | `NEXT_PUBLIC_WGRAM_MINT` | From `create-config` | The wGRAM mint on this network. |
 | `NEXT_PUBLIC_GRAM_USD` | e.g. `1.5` | Fallback GRAM price in USD, used until the live price loads or if it is unavailable. |
 | `COINGECKO_DEMO_API_KEY` | Optional | Server-only. Free CoinGecko demo key for the live GRAM price, sent as the `x-cg-demo-api-key` header. Without it, price requests share CoinGecko's keyless per-IP limit with everything else on Vercel's IPs. Never give it a `NEXT_PUBLIC_` name. |
-| `NEXT_PUBLIC_SITE_URL` | e.g. `https://gramfun.xyz` | The site's public https origin, with no trailing slash. It is the base of the `og:image` URLs in coin link previews, and the server reads the site's own `/api/metadata` and `/api/images` paths from it. |
+| `NEXT_PUBLIC_PRIVY_APP_ID` | Privy app id | Optional. Turns on Privy sign-in (Telegram, email, Solana wallets, embedded wallets). The app must allow the site's domain. Not a secret. |
+| `NEXT_PUBLIC_HERO_ART` | e.g. `/art/hero.jpg` | Optional. Full-bleed home hero image under `public/`; without it the hero draws the logo's ring. |
+| `NEXT_PUBLIC_X_URL`, `NEXT_PUBLIC_TELEGRAM_URL` | Community links | Optional. Shown in the footer when set. |
+| `NEXT_PUBLIC_SITE_URL` | e.g. `https://ongram.fun` | The site's public https origin, with no trailing slash. It is the base of the `og:image` URLs in coin link previews, and the server reads the site's own `/api/metadata` and `/api/images` paths from it. |
 | `BLOB_READ_WRITE_TOKEN` | Set by Vercel | Added when you connect the Blob store. Stores coin images and metadata; required in production, where the site refuses uploads without it. Not needed locally, where uploads go to `launchpad/web/.data/`. |
 | `DEV_ADMIN_KEYPAIR` | Local only | Mint authority of the local stand-in wGRAM, for the localnet faucet. **Never set it on Vercel or anywhere but your machine.** |
 
@@ -150,6 +153,7 @@ Fees wait in each coin's pool until claimed, so claim whenever suits (weekly is 
 cd launchpad
 pnpm claim-fees --rpc "$RPC" --config <config> --platform-keypair $KEY --buyback <buyback address>          # list and simulate
 pnpm claim-fees --rpc "$RPC" --config <config> --platform-keypair $KEY --buyback <buyback address> --send   # claim
+pnpm claim-fees … --buyback-share 100 --send   # all of it to the buyback (market-maker) wallet as liquidity
 ```
 
 - It checks that the keypair is the config's fee claimer, lists every coin with unclaimed
@@ -160,6 +164,30 @@ pnpm claim-fees --rpc "$RPC" --config <config> --platform-keypair $KEY --buyback
   it; the script closes it again in the same transaction, so no rent stays locked.
 - Failures (for example a transaction that didn't land) are listed and the script exits
   non-zero. Re-run it: it only picks up what is still unclaimed.
+
+### Graduations
+
+Meteora's own keepers only migrate finished curves whose quote token is on their list (SOL,
+USDC, JUP and a few others) or is Jupiter-verified with an Organic Score above 50. wGRAM is
+neither yet, so the market-maker bot (`BOT=mm`) migrates every finished curve under
+`LAUNCHPAD_CONFIG` (default: the mainnet config) into its DAMM v2 pool on each cycle
+(`scripts/migrate.ts`, about 0.002 SOL each, paid by the buyback wallet). To check or run it by hand:
+
+```bash
+pnpm migrate-graduated --rpc "$RPC" --config <config> --payer-keypair <path>          # list
+pnpm migrate-graduated --rpc "$RPC" --config <config> --payer-keypair <path> --send   # migrate
+```
+
+### Keeping the market maker supplied
+
+- **NEAR for bridging.** Every bridge trip pays NEAR gas and Omni's relayer fee from
+  `NEAR_ACCOUNT`, about 0.06 NEAR per trip. The bot logs `LOW NEAR` below 1.5 NEAR; bridging
+  stops when it runs out. Keep tens of NEAR there when volume is high.
+- **Pool size.** Bridge trips take a few minutes, so the pool plus the bot's reserve must
+  absorb the flow in between. In `scripts/stress-mm.ts` runs at a $1M/day pace with 5-minute
+  trips: $3.5k let a third of buys fail, $10k about 14%, $25k filled everything at 0.6% cost;
+  a one-way $25k burst in 30 minutes needed $25k to fill (7% cost) and about $50k to stay
+  calm. Send SOL to the buyback wallet to grow it; the bot converts and spreads it.
 - Coins keep the config they launched with, so if you ever switch configs, keep claiming
   from the old one too.
 - After graduation a coin trades in a Meteora DAMM v2 pool. The platform's half of the

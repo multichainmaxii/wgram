@@ -29,7 +29,9 @@ const SEED_SOL_PCT = Number(process.env.SEED_SOL_PCT ?? 10) // share of the seed
 const SEED_WGRAM = (SEED_USD * (100 - SEED_SOL_PCT)) / 100 / GRAM_USD
 const SEED_SOL = (SEED_USD * SEED_SOL_PCT) / 100 / SOL_USD
 const MAX_TRADE_USD = 1_000 // one swap per $1k, like many separate traders
-const WINDOW_MIN = 5
+// Trading window, and how long a bridge trip takes to land (one window). Real Omni trips have
+// taken 5 to 20 minutes.
+const WINDOW_MIN = Number(process.env.WINDOW_MIN ?? 5)
 const RENT_SOL = 0.5 // pool and position rent plus fees, on top of the seed
 const BRIDGE_COST = 0.0055 // NEAR Intents spread + fees
 const BRIDGE_FIXED_SOL = 0.32 / SOL_USD // Omni relayer fee per trip

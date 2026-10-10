@@ -1,12 +1,14 @@
 // Claims the platform's fees from every coin launched under our config: its share of
 // trading fees (in wGRAM) and of each coin's launch fee (in SOL), one transaction per
-// coin. The platform keypair must be the config's fee claimer. Half of the wGRAM trading
-// fees claimed goes on to the ecosystem buyback wallet (BUYBACK_SHARE_PCT in curve.ts).
+// coin. The platform keypair must be the config's fee claimer. A share of the wGRAM trading
+// fees claimed goes on to the buyback wallet, which is the market maker's wallet, so it becomes
+// wGRAM/SOL liquidity: --buyback-share percent, default BUYBACK_SHARE_PCT in curve.ts (50).
+// --buyback-share 100 puts all of it into liquidity.
 //
 // Dry run by default: lists what's claimable and simulates each claim. Only --send
 // claims. Safe to re-run, since only unclaimed fees are picked up. Runbook: DEPLOY.md.
 //
-//   pnpm claim-fees --rpc <url> --config <address> --platform-keypair <path> --buyback <address> [--send]
+//   pnpm claim-fees --rpc <url> --config <address> --platform-keypair <path> --buyback <address> [--buyback-share 50] [--send]
 
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -41,7 +43,7 @@ import {
 } from '@meteora-ag/dynamic-bonding-curve-sdk'
 import { BUYBACK_SHARE_PCT } from './curve.ts'
 
-const USAGE = 'usage: pnpm claim-fees --rpc <url> --config <address> --platform-keypair <path> --buyback <address> [--send]'
+const USAGE = 'usage: pnpm claim-fees --rpc <url> --config <address> --platform-keypair <path> --buyback <address> [--buyback-share 50] [--send]'
 
 // Set in a pool's creationFeeBits once the partner has claimed its share of the launch
 // fee (PARTNER_CREATION_FEE_CLAIMED_MASK in Meteora's program).
@@ -67,6 +69,7 @@ function readArgs() {
         config: { type: 'string' },
         'platform-keypair': { type: 'string' },
         buyback: { type: 'string' },
+        'buyback-share': { type: 'string' },
         send: { type: 'boolean', default: false },
       },
     }).values
@@ -143,8 +146,10 @@ async function symbols(connection: Connection, mints: PublicKey[]): Promise<stri
 type Claim = { pool: PublicKey; state: VirtualPool['poolState']; trading: bigint; creation: bigint }
 
 async function main() {
-  const { rpc, config: configArg, 'platform-keypair': keypairArg, buyback: buybackArg, send } = readArgs()
+  const { rpc, config: configArg, 'platform-keypair': keypairArg, buyback: buybackArg, 'buyback-share': shareArg, send } = readArgs()
   if (!rpc || !configArg || !keypairArg || !buybackArg) fail(USAGE)
+  const share = shareArg === undefined ? BUYBACK_SHARE_PCT : Number(shareArg)
+  if (!Number.isInteger(share) || share < 0 || share > 100) fail('--buyback-share must be a whole percent from 0 to 100')
   const buyback = address(buybackArg, '--buyback')
   if (!URL.canParse(rpc) || !/^https?:$/.test(new URL(rpc).protocol)) fail('--rpc must be an http(s) URL')
   const configAddress = address(configArg, '--config')
@@ -175,7 +180,7 @@ async function main() {
   console.log(`  platform  ${platform.publicKey.toBase58()}  (fee claimer; ${fmt(before.wgram, decimals)} wGRAM, ${fmt(before.sol, 9)} SOL)`)
   if (before.sol === 0n) console.log('            has no SOL for network fees: fund it first')
   if (buyback.equals(platform.publicKey)) fail('--buyback must be a different wallet from the platform')
-  console.log(`  buyback   ${buyback.toBase58()}  (gets ${BUYBACK_SHARE_PCT}% of claimed trading fees)`)
+  console.log(`  buyback   ${buyback.toBase58()}  (gets ${share}% of claimed trading fees)`)
 
   // Meteora keeps a fixed share of each launch fee; ours is what's left.
   const creationFee = BigInt(config.poolCreationFee.toString())
@@ -194,7 +199,7 @@ async function main() {
   const totalTrading = claims.reduce((sum, c) => sum + c.trading, 0n)
   const totalCreation = claims.reduce((sum, c) => sum + c.creation, 0n)
   console.log(`\n${pools.length} coin(s) under this config, ${claims.length} with fees to claim:`)
-  console.log(`  ${fmt(totalTrading, decimals)} wGRAM in trading fees from ${claims.filter((c) => c.trading > 0n).length} coin(s), ${fmt((totalTrading * BigInt(BUYBACK_SHARE_PCT)) / 100n, decimals)} of it for the buyback`)
+  console.log(`  ${fmt(totalTrading, decimals)} wGRAM in trading fees from ${claims.filter((c) => c.trading > 0n).length} coin(s), ${fmt((totalTrading * BigInt(share)) / 100n, decimals)} of it for the buyback`)
   console.log(`  ${fmt(totalCreation, 9)} SOL in launch fees from ${claims.filter((c) => c.creation > 0n).length} coin(s)`)
   if (claims.length === 0) return
 
@@ -257,7 +262,7 @@ async function main() {
     claimed = (await balances()).wgram - before.wgram
     if (claimed <= 0n) await new Promise((r) => setTimeout(r, 2_000))
   }
-  const toBuyback = claimed > 0n ? (claimed * BigInt(BUYBACK_SHARE_PCT)) / 100n : 0n
+  const toBuyback = claimed > 0n ? (claimed * BigInt(share)) / 100n : 0n
   if (toBuyback > 0n) {
     const buybackAta = getAssociatedTokenAddressSync(config.quoteMint, buyback, true, quoteProgram)
     const tx = new Transaction().add(
@@ -265,7 +270,7 @@ async function main() {
       createTransferCheckedInstruction(quoteAta, config.quoteMint, buybackAta, platform.publicKey, toBuyback, decimals, [], quoteProgram),
     )
     const sig = await sendAndConfirmTransaction(connection, tx, [platform], { commitment: 'confirmed' })
-    console.log(`\nSent ${fmt(toBuyback, decimals)} wGRAM (${BUYBACK_SHARE_PCT}% of ${fmt(claimed, decimals)} claimed) to the buyback wallet: ${sig}`)
+    console.log(`\nSent ${fmt(toBuyback, decimals)} wGRAM (${share}% of ${fmt(claimed, decimals)} claimed) to the buyback wallet: ${sig}`)
   }
   const after = await balances()
   console.log(`\nClaimed from ${claims.length - failed} of ${claims.length} coin(s).`)
