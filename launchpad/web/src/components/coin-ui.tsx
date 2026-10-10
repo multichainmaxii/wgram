@@ -7,16 +7,22 @@ function hue(seed: string) {
   return h;
 }
 
+// The same gradient as a big background, for cards of coins without an image.
+export function coinGradient(symbol: string) {
+  const h = hue(symbol);
+  return `linear-gradient(135deg, hsl(${h} 70% 50%), hsl(${(h + 60) % 360} 70% 32%))`;
+}
+
 export function Avatar({ coin, size = 48 }: { coin: Pick<Coin, "symbol" | "image" | "name">; size?: number }) {
   if (coin.image) {
     // eslint-disable-next-line @next/next/no-img-element -- user-supplied hosts can't be listed in next.config
-    return <img src={coin.image} alt={coin.name} width={size} height={size} className="shrink-0 rounded-xl object-cover" style={{ width: size, height: size }} />;
+    return <img src={coin.image} alt={coin.name} width={size} height={size} className="shrink-0 rounded-[10px] object-cover" style={{ width: size, height: size }} />;
   }
   const h = hue(coin.symbol);
   return (
     <div
       aria-hidden
-      className="grid shrink-0 place-items-center rounded-xl font-bold text-white/90"
+      className="grid shrink-0 place-items-center rounded-[10px] font-bold text-white/90"
       style={{
         width: size,
         height: size,
@@ -44,7 +50,7 @@ export function Progress({ coin }: { coin: Pick<Coin, "progress" | "status"> }) 
 export function StatusBadge({ status }: { status: Coin["status"] }) {
   if (status === "trading") return null;
   return (
-    <span className="rounded-full bg-up/15 px-2 py-0.5 text-[11px] font-semibold text-up">
+    <span className="shrink-0 rounded-full bg-up/15 px-2 py-0.5 text-[11px] font-semibold text-up">
       {status === "graduated" ? "Graduated" : "Graduating"}
     </span>
   );
@@ -52,8 +58,9 @@ export function StatusBadge({ status }: { status: Coin["status"] }) {
 
 export function PairedWithGram() {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[11px] font-medium text-accent">
-      <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-accent/10 py-0.5 pr-2.5 pl-1 text-xs font-medium text-accent">
+      {/* eslint-disable-next-line @next/next/no-img-element -- a tiny static SVG */}
+      <img src="/wgram.svg" alt="" width={16} height={16} />
       paired with wGRAM
     </span>
   );

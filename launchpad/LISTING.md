@@ -13,7 +13,7 @@ facts and the texts to paste.
 | Backing | 1:1 GRAM held by the `wgram.near` contract on NEAR (HOT Bridge GRAM, token `1117_`), bridged to Solana by Omni Bridge |
 | Main market | Meteora DLMM wGRAM/SOL `7DoV9YSeSDiLF6gh97tAToRSpgtWt4VpZZzZ15pq9XRd` |
 | Launchpad config (Meteora DBC) | `DpR8qA8iBorfpFMfoZCiC7psB2YVARNT8cspeAJ7AWPL`, every coin on it is paired with wGRAM |
-| Website | https://gramfun.vercel.app |
+| Website | https://ongram.fun |
 | Source | https://github.com/multichainmaxii/wgram |
 | Logo | https://raw.githubusercontent.com/multichainmaxii/wgram/main/launchpad/brand/wgram-logo.png (512×512 PNG; SVG beside it) |
 
@@ -37,7 +37,7 @@ symbol but no logo, so the logo has to be added on each platform below.
 Short description:
 
 > Wrapped GRAM (wGRAM) is GRAM on Solana, backed 1:1 by GRAM held in an immutable NEAR
-> contract and bridged by Omni Bridge. It is the quote token of the GramFun launchpad.
+> contract and bridged by Omni Bridge. It is the quote token of the ongram.fun launchpad.
 
 Verification weighs liquidity, holders, organic volume and community support ("smart likes"
 on the token's Jupiter page), so it gets easier as volume grows.
@@ -53,7 +53,7 @@ Optional; Jupiter's logo already reaches many wallets.
 Terminals show new launches from launchpads they know, keyed by the Meteora config. Message
 for their support or partnerships channel:
 
-> Hi! We run GramFun (https://gramfun.vercel.app), a launchpad on Meteora's Dynamic Bonding
+> Hi! We run ongram.fun (https://ongram.fun), a launchpad on Meteora's Dynamic Bonding
 > Curve where every coin is paired with wGRAM, GRAM bridged 1:1 to Solana.
 >
 > - Launchpad config (DBC): `DpR8qA8iBorfpFMfoZCiC7psB2YVARNT8cspeAJ7AWPL`
@@ -64,5 +64,5 @@ for their support or partnerships channel:
 > - Logo: https://raw.githubusercontent.com/multichainmaxii/wgram/main/launchpad/brand/wgram-logo.png
 > - Open source: https://github.com/multichainmaxii/wgram
 >
-> Could you add the config as a launchpad (label "GramFun") and support buying with SOL via
+> Could you add the config as a launchpad (label "ongram.fun") and support buying with SOL via
 > the wGRAM/SOL pool? Happy to provide anything else you need.

@@ -1,20 +1,18 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Keypair } from "@solana/web3.js";
-import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { Avatar, PairedWithGram } from "@/components/coin-ui";
-import { buildLaunch, confirmSignature } from "@/lib/chain";
+import { buildLaunch, confirmSignature, connection } from "@/lib/chain";
+import { useAppWallet } from "@/lib/wallet";
 import { isConfigured } from "@/lib/config";
 import { ImagePicker, useImagePicker } from "./ImagePicker";
 
 export default function LaunchPage() {
   const router = useRouter();
-  const { connection } = useConnection();
-  const { publicKey, sendTransaction } = useWallet();
-  const { setVisible } = useWalletModal();
+  const { publicKey, login, sendTransaction } = useAppWallet();
   const [form, setForm] = useState({ name: "", symbol: "", description: "" });
   const picker = useImagePicker();
   const [busy, setBusy] = useState(false);
@@ -25,7 +23,7 @@ export default function LaunchPage() {
 
   async function launch(e: React.FormEvent) {
     e.preventDefault();
-    if (!publicKey) return setVisible(true);
+    if (!publicKey) return login();
     if (picker.uploading) return;
     setBusy(true);
     setError(null);
@@ -40,11 +38,11 @@ export default function LaunchPage() {
 
       const baseMint = Keypair.generate();
       const tx = await buildLaunch({ creator: publicKey, baseMint: baseMint.publicKey, name: form.name.trim(), symbol: form.symbol, uri: body.uri });
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+      const { blockhash, lastValidBlockHeight } = await connection().getLatestBlockhash();
       tx.feePayer = publicKey;
       tx.recentBlockhash = blockhash;
-      const signature = await sendTransaction(tx, connection, { signers: [baseMint] });
-      await confirmSignature(connection, signature, lastValidBlockHeight);
+      const signature = await sendTransaction(tx, [baseMint]);
+      await confirmSignature(connection(), signature, lastValidBlockHeight);
       router.push(`/coin/${baseMint.publicKey.toBase58()}`);
     } catch (err) {
       setError((err as Error).message.split("\n")[0]);
@@ -55,15 +53,16 @@ export default function LaunchPage() {
   const preview = { name: form.name || "Your coin", symbol: form.symbol || "TICKER", image: picker.preview };
 
   return (
-    <div className="mx-auto grid max-w-4xl gap-8 lg:grid-cols-[1fr_320px]">
+    <div className="mx-auto grid max-w-5xl gap-8 px-4 py-10 md:px-6 lg:grid-cols-[1fr_320px]">
       <form onSubmit={launch} className="space-y-4">
-        <h1 className="text-2xl font-bold">Launch a coin</h1>
-        <p className="text-sm text-muted">Your coin trades against wGRAM from the first second. No presale, no team allocation.</p>
+        <div className="hud text-muted">{"// launch"}</div>
+        <h1 className="display text-6xl sm:text-7xl">Launch.</h1>
+        <p className="text-muted">It trades against wGRAM from the first second. No presale, no team allocation.</p>
         <Field label="Name" hint="Up to 32 characters">
-          <input required maxLength={32} value={form.name} onChange={set("name")} placeholder="Durov Dog" className={input} />
+          <input required maxLength={32} value={form.name} onChange={set("name")} placeholder="Pavel" className={input} />
         </Field>
         <Field label="Ticker" hint="Up to 10 letters or numbers">
-          <input required maxLength={10} value={form.symbol} onChange={set("symbol")} placeholder="DUROV" className={input} />
+          <input required maxLength={10} value={form.symbol} onChange={set("symbol")} placeholder="PAVEL" className={input} />
         </Field>
         <Field label="Description" hint="Optional">
           <textarea maxLength={500} rows={3} value={form.description} onChange={set("description")} placeholder="What's the story?" className={`${input} h-auto py-3`} />
@@ -83,8 +82,8 @@ export default function LaunchPage() {
       </form>
 
       <aside className="space-y-4">
-        <div className="rounded-2xl border border-line bg-panel p-4">
-          <div className="mb-3 text-xs text-muted">Preview</div>
+        <div className="border border-line bg-panel p-4">
+          <div className="hud mb-3 text-muted">Preview</div>
           <div className="flex items-center gap-3">
             <Avatar coin={preview} />
             <div>
@@ -96,14 +95,19 @@ export default function LaunchPage() {
             <PairedWithGram />
           </div>
         </div>
-        <div className="space-y-2 rounded-2xl border border-line bg-panel p-4 text-sm">
+        <div className="space-y-2 border border-line bg-panel p-4 text-sm">
           <Info label="Launch cost" value="~0.035 SOL" />
           <Info label="Supply" value="1,000,000,000" />
           <Info label="Starts at" value="~$4.5k market cap" />
           <Info label="Graduates at" value="~$40k market cap" />
           <Info label="Trading fee" value="1.5%, about 0.4% of volume goes to you" />
           <p className="pt-1 text-xs text-muted">
-            On graduation the curve&apos;s wGRAM and remaining supply move into a Meteora pool with the liquidity locked forever.
+            Your share of the fees builds up in wGRAM; claim it any time from{" "}
+            <Link href="/my-coins" className="text-accent hover:underline">
+              My coins
+            </Link>
+            . On graduation the curve&apos;s wGRAM and remaining supply move into a Meteora pool with the liquidity locked
+            forever, half of it yours.
           </p>
         </div>
       </aside>
@@ -111,13 +115,13 @@ export default function LaunchPage() {
   );
 }
 
-const input = "h-11 w-full rounded-xl border border-line bg-panel px-4 text-sm placeholder:text-muted/70 focus:border-accent focus:outline-none";
+const input = "h-11 w-full border border-line bg-panel px-4 text-sm placeholder:text-muted/70 focus:border-accent focus:outline-none";
 
 function Field({ label, hint, children, as: Tag = "label" }: { label: string; hint: string; children: React.ReactNode; as?: "label" | "div" }) {
   return (
     <Tag className="block">
       <span className="mb-1 flex justify-between text-sm">
-        <span className="font-medium">{label}</span>
+        <span className="hud">{label}</span>
         <span className="text-xs text-muted">{hint}</span>
       </span>
       {children}

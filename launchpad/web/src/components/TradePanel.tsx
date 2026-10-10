@@ -3,22 +3,19 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { PublicKey } from "@solana/web3.js";
-import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import type { SwapQuote2Result } from "@meteora-ag/dynamic-bonding-curve-sdk";
 import BN from "bn.js";
-import { buildTrade, confirmSignature, fromBaseUnits, parseUnits, quoteTrade, tokenBalance, wgramMint, type Coin, type Side } from "@/lib/chain";
+import { buildTrade, confirmSignature, connection, fromBaseUnits, parseUnits, quoteTrade, tokenBalance, wgramMint, type Coin, type Side } from "@/lib/chain";
 import { TOKEN_DECIMALS, WGRAM_DECIMALS } from "@/lib/config";
 import { tokens, wgram } from "@/lib/format";
+import { useAppWallet } from "@/lib/wallet";
 
 type PoolAccount = Parameters<typeof quoteTrade>[0];
 
 const SLIPPAGES = [50, 100, 300];
 
 export function TradePanel({ coin, pool, onTraded }: { coin: Coin; pool: PoolAccount; onTraded: () => void }) {
-  const { connection } = useConnection();
-  const { publicKey, sendTransaction } = useWallet();
-  const { setVisible } = useWalletModal();
+  const { publicKey, login, sendTransaction } = useAppWallet();
   const [side, setSide] = useState<Side>("buy");
   const [amount, setAmount] = useState("");
   const [slippageBps, setSlippageBps] = useState(100);
@@ -76,17 +73,17 @@ export function TradePanel({ coin, pool, onTraded }: { coin: Coin; pool: PoolAcc
   }, [quoteKey]);
 
   async function submit() {
-    if (!publicKey) return setVisible(true);
+    if (!publicKey) return login();
     if (!amountIn || !quote) return;
     setBusy(true);
     setStatus(null);
     try {
       const tx = await buildTrade(publicKey, pool, side, amountIn, quote.minimumAmountOut ?? new BN(0));
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+      const { blockhash, lastValidBlockHeight } = await connection().getLatestBlockhash();
       tx.feePayer = publicKey;
       tx.recentBlockhash = blockhash;
-      const signature = await sendTransaction(tx, connection);
-      await confirmSignature(connection, signature, lastValidBlockHeight);
+      const signature = await sendTransaction(tx);
+      await confirmSignature(connection(), signature, lastValidBlockHeight);
       const got = fromBaseUnits(quote.outputAmount, outDecimals);
       setStatus({ ok: true, text: side === "buy" ? `Bought ~${tokens(got)} $${coin.symbol}` : `Sold for ~${wgram(got)}` });
       setAmount("");
@@ -99,9 +96,22 @@ export function TradePanel({ coin, pool, onTraded }: { coin: Coin; pool: PoolAcc
     }
   }
 
+  // The curve is full and the coin is moving to Meteora (the market-maker bot migrates it
+  // within about a minute); the curve takes no trades in between.
+  if (coin.status === "graduating") {
+    return (
+      <div className="border border-line bg-panel p-5">
+        <h2 className="hud text-muted">Graduating</h2>
+        <p className="mt-2 text-sm">
+          ${coin.symbol} filled its curve and is moving into its Meteora pool, with the liquidity locked forever. Trading opens there in about a minute.
+        </p>
+      </div>
+    );
+  }
+
   if (coin.status === "graduated") {
     return (
-      <div className="rounded-2xl border border-line bg-panel p-5">
+      <div className="border border-line bg-panel p-5">
         <h2 className="font-semibold">Graduated</h2>
         <p className="mt-1 text-sm text-muted">
           ${coin.symbol} completed its curve and now trades in a Meteora pool against wGRAM, with its liquidity locked forever.
@@ -124,7 +134,7 @@ export function TradePanel({ coin, pool, onTraded }: { coin: Coin; pool: PoolAcc
   const leftover = quote && side === "buy" && quote.amountLeft && !quote.amountLeft.isZero() ? fromBaseUnits(quote.amountLeft, WGRAM_DECIMALS) : 0;
 
   return (
-    <div className="rounded-2xl border border-line bg-panel p-5">
+    <div className="border border-line bg-panel p-5">
       <div className="mb-4 grid grid-cols-2 gap-1 rounded-full bg-panel-2 p-1">
         {(["buy", "sell"] as const).map((s) => (
           <button

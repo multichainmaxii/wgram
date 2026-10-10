@@ -15,9 +15,9 @@ const MIN_CANDLES = 5;
 export function PriceChart({ trades, error }: { trades: Trade[] | null; error?: string | null }) {
   const series = useMemo(() => (trades?.length ? toSeries(trades) : null), [trades]);
   return (
-    <div className="rounded-2xl border border-line bg-panel p-5">
+    <div className="border border-line bg-panel p-5">
       <div className="mb-3 flex justify-between text-sm">
-        <span className="font-semibold">Price</span>
+        <span className="hud text-muted">Price</span>
         {series && <span className="text-muted">{series.kind === "candles" ? "1m candles" : "Each trade"} · wGRAM</span>}
       </div>
       {series && trades ? (
@@ -41,13 +41,13 @@ function Chart({ series, version }: { series: Series; version: string }) {
   useEffect(() => {
     const css = getComputedStyle(document.documentElement);
     const token = (name: string) => css.getPropertyValue(name).trim() || "#8a99b3";
-    const line = token("--color-line");
-    const label = { labelBackgroundColor: token("--color-panel-2") };
+    const line = token("--line");
+    const label = { labelBackgroundColor: token("--panel-2") };
     const chart = createChart(containerRef.current!, {
       autoSize: true,
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
-        textColor: token("--color-muted"),
+        textColor: token("--muted"),
         fontFamily: getComputedStyle(document.body).fontFamily,
       },
       grid: { vertLines: { color: line }, horzLines: { color: line } },
@@ -55,12 +55,12 @@ function Chart({ series, version }: { series: Series; version: string }) {
       timeScale: { borderColor: line, timeVisible: true, secondsVisible: false },
       crosshair: { vertLine: label, horzLine: label },
     });
-    const up = token("--color-up");
-    const down = token("--color-down");
+    const up = token("--up");
+    const down = token("--down");
     const created =
       kind === "candles"
         ? chart.addSeries(CandlestickSeries, { upColor: up, downColor: down, wickUpColor: up, wickDownColor: down, borderVisible: false })
-        : chart.addSeries(LineSeries, { color: token("--color-accent"), lineWidth: 2, pointMarkersVisible: true });
+        : chart.addSeries(LineSeries, { color: token("--accent"), lineWidth: 2, pointMarkersVisible: true });
     apiRef.current = { chart, series: created };
     return () => {
       apiRef.current = null;

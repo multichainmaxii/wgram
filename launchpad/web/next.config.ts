@@ -6,6 +6,10 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.join(__dirname),
   },
+  // "My coins" became Profile.
+  async redirects() {
+    return [{ source: "/my-coins", destination: "/profile", permanent: true }];
+  },
 };
 
 export default nextConfig;

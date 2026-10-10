@@ -1,6 +1,7 @@
 import { ImageResponse } from "next/og";
 import BrandImage from "@/app/opengraph-image";
 import { BRAND } from "@/lib/config";
+import { OG, OgBrandMark, OgLogo, OgWordmark } from "@/lib/og";
 import { usd, wgram } from "@/lib/format";
 import { getCoinServer } from "@/lib/server/coins";
 import { getGramUsd } from "@/lib/server/price";
@@ -10,13 +11,7 @@ export const alt = `A coin on ${BRAND.name}: market cap and bonding curve progre
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-// Site colors from globals.css: Satori can't read CSS variables.
-const INK = "#0a0f1a";
-const LINE = "#233047";
-const TEXT = "#e6edf7";
-const MUTED = "#8a99b3";
-const ACCENT = "#2aabee";
-const UP = "#22c55e";
+const { ink: INK, line: LINE, text: TEXT, muted: MUTED, accent: ACCENT, up: UP } = OG;
 // Satori's text-stroke parser splits on spaces, so no rgba() here.
 const WHITE_90 = "#ffffffe6";
 
@@ -138,44 +133,28 @@ function CoinCard({ coin, image, gramUsd }: { coin: Coin; image: string | null; 
         justifyContent: "space-between",
         padding: 64,
         backgroundColor: INK,
-        backgroundImage: "radial-gradient(circle at 88% 8%, rgba(42, 171, 238, 0.26), rgba(42, 171, 238, 0) 55%)",
+        backgroundImage: OG.glow,
         color: TEXT,
       }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-          <div
-            style={{
-              width: 60,
-              height: 60,
-              borderRadius: 30,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: ACCENT,
-              color: INK,
-              fontSize: 34,
-              WebkitTextStroke: `1.5px ${INK}`,
-            }}
-          >
-            {BRAND.name.charAt(0)}
-          </div>
-          <div style={{ fontSize: 40, letterSpacing: -1, WebkitTextStroke: `1px ${TEXT}` }}>{BRAND.name}</div>
+          <OgBrandMark size={60} />
+          <OgWordmark fontSize={40} />
         </div>
         <div
           style={{
             display: "flex",
             alignItems: "center",
             gap: 12,
-            padding: "10px 24px",
+            padding: "8px 24px 8px 10px",
             borderRadius: 999,
-            border: "2px solid rgba(42, 171, 238, 0.35)",
-            backgroundColor: "rgba(42, 171, 238, 0.1)",
+            ...OG.pill,
             color: ACCENT,
             fontSize: 28,
           }}
         >
-          <div style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: ACCENT }} />
+          <OgLogo size={32} />
           paired with wGRAM
         </div>
       </div>

@@ -3,7 +3,10 @@ const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFra
 // `gramUsd` comes from useGramUsd() in components, or getGramUsd() on the server.
 export function usd(wgram: number, gramUsd: number): string {
   const value = wgram * gramUsd;
-  return value >= 1000 ? `$${compact.format(value)}` : `$${value.toFixed(value < 1 ? 4 : 2)}`;
+  if (value >= 1000) return `$${compact.format(value)}`;
+  // Coin prices are fractions of a cent: keep three significant digits instead of rounding to $0.0000.
+  if (value > 0 && value < 0.01) return `$${value.toPrecision(3)}`;
+  return `$${value.toFixed(value < 1 ? 4 : 2)}`;
 }
 
 export function wgram(amount: number): string {

@@ -5,7 +5,7 @@ GRAM on Solana, and a launchpad for coins paired with it.
 - **wGRAM** is an SPL token on Solana backed 1:1 by GRAM, Telegram's TON coin. GRAM
   leaves TON through HOT Bridge, is wrapped on NEAR by the contract in
   [`contracts/`](contracts), and crosses to Solana through NEAR's Omni Bridge.
-- **GramFun** (working name) is the launchpad in [`launchpad/`](launchpad). Anyone can
+- **ongram.fun** is the launchpad in [`launchpad/`](launchpad). Anyone can
   launch a coin priced in wGRAM on a Meteora bonding curve. When the curve fills, the coin
   graduates into a Meteora DAMM v2 pool with its liquidity locked.
 

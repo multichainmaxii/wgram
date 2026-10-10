@@ -18,6 +18,7 @@ export type Coin = {
   status: CoinStatus;
   createdAt: number; // unix seconds
   dammPool?: string; // DAMM v2 pool once graduated
+  creatorFeeWgram: number; // the creator's unclaimed share of trading fees
 };
 
 export type Trade = {

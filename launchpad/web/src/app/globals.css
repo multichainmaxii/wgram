@@ -1,48 +1,148 @@
 @import "tailwindcss";
 
-@theme {
-  --color-ink: #0a0f1a;
-  --color-panel: #111827;
-  --color-panel-2: #172033;
-  --color-line: #233047;
-  --color-text: #e6edf7;
-  --color-muted: #8a99b3;
-  --color-accent: #2aabee; /* Telegram blue */
-  --color-accent-strong: #1d8fd0;
-  --color-up: #22c55e;
-  --color-down: #f43f5e;
-}
-
-@theme inline {
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-html {
-  background: var(--color-ink);
-  color: var(--color-text);
+/* Dark only: Telegram's night palette. */
+:root {
+  --ink: #17212b;
+  --panel: #1c2733;
+  --panel-2: #242f3d;
+  --line: #2a3542;
+  --text: #e9edf1;
+  --muted: #8596a8;
+  --accent: #5eb0f3;
+  --accent-strong: #7dc0f6;
+  --up: #56c271;
+  --down: #f2665e;
+  --header: rgba(23, 33, 43, 0.84);
   color-scheme: dark;
 }
 
-body {
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+@theme inline {
+  --color-ink: var(--ink);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-line: var(--line);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-up: var(--up);
+  --color-down: var(--down);
+  --color-header: var(--header);
+  --font-sans: var(--font-archivo), -apple-system, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
-/* Match the wallet adapter's button to the site. */
+html {
+  background: var(--ink);
+  color: var(--text);
+}
+
+body {
+  background: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+/* Display type: extra-wide, heavy, stacked tight (the kprverse.com feel). */
+.display {
+  font-family: var(--font-sans);
+  font-stretch: 125%;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: -0.035em;
+  line-height: 0.86;
+}
+/* Console labels: tiny monospace caps. */
+.hud {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.4;
+}
+/* Cards share the buttons' cut: two chamfered corners. */
+.cut {
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+}
+.cut-sm {
+  clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
+}
+/* Faint blueprint grid for hero backgrounds. */
+.grid-lines {
+  background-image: linear-gradient(to right, color-mix(in oklab, var(--text) 7%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--text) 7%, transparent) 1px, transparent 1px);
+  background-size: 64px 64px;
+}
+html[data-booted] .boot { display: none; }
+@media (prefers-reduced-motion: reduce) { .boot { display: none; } }
+@keyframes boot-bar { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes fade-out { to { opacity: 0; visibility: hidden; } }
+@keyframes drift { 0%, 100% { transform: translateY(0) rotate(var(--r, 0deg)); } 50% { transform: translateY(-10px) rotate(var(--r, 0deg)); } }
+.drift { animation: drift 6s ease-in-out infinite; }
+@keyframes spin-slow { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .drift { animation: none; }
+}
+
+/* Match the wallet adapter's button and modal to the site. */
 .wallet-adapter-button.wallet-adapter-button-trigger {
-  background: var(--color-accent);
+  background: var(--accent);
+  color: var(--ink);
   border-radius: 9999px;
-  height: 40px;
-  padding: 0 18px;
+  height: 36px;
+  padding: 0 16px;
   font-family: inherit;
   font-size: 14px;
   font-weight: 600;
 }
 .wallet-adapter-button.wallet-adapter-button-trigger:not([disabled]):hover {
-  background: var(--color-accent-strong);
+  background: var(--accent-strong);
+}
+.wallet-adapter-button-trigger .wallet-adapter-button-start-icon img {
+  border-radius: 4px;
 }
 .wallet-adapter-modal-wrapper {
-  background: var(--color-panel);
-  border: 1px solid var(--color-line);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.18);
   font-family: inherit;
+}
+.wallet-adapter-modal-title,
+.wallet-adapter-modal-list .wallet-adapter-button,
+.wallet-adapter-modal-list-more {
+  color: var(--text);
+  font-family: inherit;
+}
+.wallet-adapter-modal-list .wallet-adapter-button:not([disabled]):hover {
+  background: var(--panel-2);
+}
+.wallet-adapter-modal-list li:not(:first-of-type) {
+  border-top: 1px solid var(--line);
+}
+.wallet-adapter-modal-button-close {
+  background: var(--panel-2);
+}
+.wallet-adapter-modal-button-close svg {
+  fill: var(--muted);
+}
+.wallet-adapter-modal-list-more svg {
+  fill: var(--text);
+}
+.wallet-adapter-modal-list .wallet-adapter-button span {
+  color: var(--muted);
+}
+.wallet-adapter-dropdown-list {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+  font-family: inherit;
+}
+.wallet-adapter-dropdown-list-item {
+  color: var(--text);
+  font-family: inherit;
+}
+.wallet-adapter-dropdown-list-item:not([disabled]):hover {
+  background: var(--panel-2);
 }

@@ -8,8 +8,8 @@ const wgramAmount = (amount: number) =>
 
 export function TradesTable({ trades, symbol, error }: { trades: Trade[] | null; symbol: string; error?: string | null }) {
   return (
-    <div className="rounded-2xl border border-line bg-panel p-5">
-      <h2 className="mb-3 font-semibold">Trades</h2>
+    <div className="border border-line bg-panel p-5">
+      <h2 className="hud mb-3 text-muted">Trades</h2>
       {!trades ? (
         <p className="text-sm text-muted">{error ? "Couldn't load trades." : "Loading trades…"}</p>
       ) : trades.length === 0 ? (

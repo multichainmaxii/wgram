@@ -1,7 +1,8 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "launchpad", "runtimeExecutable": "pnpm", "runtimeArgs": ["--dir", "launchpad/web", "dev"], "port": 3000, "autoPort": true },
-    { "name": "chain", "runtimeExecutable": "bash", "runtimeArgs": ["launchpad/scripts/start-validator.sh"], "port": 11899, "autoPort": false }
+    {"name": "launchpad", "runtimeExecutable": "pnpm", "runtimeArgs": ["--dir", "launchpad/web", "dev"], "port": 3000, "autoPort": true},
+    {"name": "chain", "runtimeExecutable": "bash", "runtimeArgs": ["launchpad/scripts/start-validator.sh"], "port": 11899, "autoPort": false},
+    {"name": "launchpad-mainnet", "runtimeExecutable": "bash", "runtimeArgs": ["-c", "cd launchpad/web && set -a && . ./.env.mainnet && set +a && exec pnpm exec next dev -p 3001"], "port": 3001, "autoPort": false}
   ]
 }

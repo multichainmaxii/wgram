@@ -1,7 +1,7 @@
 // Reads launchpad state straight from Meteora's bonding-curve program and builds
 // transactions for wallets to sign. Works in the browser and on the server.
 
-import { Connection, PublicKey, type Transaction } from "@solana/web3.js";
+import { Connection, PublicKey, VersionedTransaction, type Transaction } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import BN from "bn.js";
 import {
@@ -129,6 +129,7 @@ export function coinFromPool(pool: PoolAccount, meta: TokenMeta | null, offchain
     status: migrated ? "graduated" : raised >= threshold ? "graduating" : "trading",
     createdAt: Number(s.activationPoint.toString()),
     dammPool: migrated ? deriveDammV2PoolAddress(dammConfig, s.baseMint, wgramMint()).toBase58() : undefined,
+    creatorFeeWgram: Number(s.creatorQuoteFee.toString()) / 10 ** WGRAM_DECIMALS,
   };
 }
 
@@ -214,6 +215,51 @@ export async function buildLaunch(params: { creator: PublicKey; baseMint: Public
     payer: params.creator,
     poolCreator: params.creator,
   });
+}
+
+// Creators' earnings. Trading fees are collected in wGRAM (CollectFeeMode.QuoteToken), so
+// creatorBaseFee stays 0, but both are claimed in case. The SDK opens the creator's
+// token accounts if they don't exist yet.
+export function buildCreatorFeeClaim(creator: PublicKey, pool: PoolAccount): Promise<Transaction> {
+  const s = pool.account.poolState;
+  return dbc().creator.claimCreatorTradingFee({
+    creator,
+    payer: creator,
+    pool: pool.publicKey,
+    maxBaseAmount: s.creatorBaseFee,
+    maxQuoteAmount: s.creatorQuoteFee,
+  });
+}
+
+// A graduating buy can overshoot the curve's target; after migration the creator can take
+// a share of that surplus once. The program decides the share, so the amount is read from
+// a simulation rather than recomputed here.
+export function mayHaveSurplus(pool: PoolAccount): boolean {
+  const s = pool.account.poolState;
+  return Number(s.isMigrated) === 1 && Number(s.isCreatorWithdrawSurplus) === 0;
+}
+
+export function buildCreatorSurplusClaim(creator: PublicKey, pool: PoolAccount): Promise<Transaction> {
+  return dbc().creator.creatorWithdrawSurplus({ creator, pool: pool.publicKey });
+}
+
+// How much wGRAM `tx` would pay `owner`, from a simulation (nothing is sent). 0 if it would fail.
+export async function simulatedWgramGain(tx: Transaction, owner: PublicKey): Promise<bigint> {
+  const ata = getAssociatedTokenAddressSync(wgramMint(), owner, true);
+  const before = await tokenBalance(owner, wgramMint());
+  tx.feePayer = owner;
+  tx.recentBlockhash = (await connection().getLatestBlockhash()).blockhash;
+  const sim = await connection().simulateTransaction(new VersionedTransaction(tx.compileMessage()), {
+    sigVerify: false,
+    replaceRecentBlockhash: true,
+    accounts: { encoding: "base64", addresses: [ata.toBase58()] },
+  });
+  const after = sim.value.accounts?.[0];
+  if (sim.value.err || !after) return 0n;
+  // A token account's balance is the little-endian u64 at byte 64.
+  const bytes = Uint8Array.from(atob(after.data[0]), (c) => c.charCodeAt(0));
+  const amount = new DataView(bytes.buffer).getBigUint64(64, true);
+  return amount > before ? amount - before : 0n;
 }
 
 // Parses a typed amount like "12.5" into base units without floating point.
