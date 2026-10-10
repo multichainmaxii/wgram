@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<defs><filter id="cglow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="9" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+<rect width="512" height="512" rx="120" fill="#17212B"/>
+<g filter="url(#cglow)" fill="none" stroke="#5EE0FF" stroke-width="14" stroke-linejoin="round" stroke-linecap="round">
+<g transform="translate(256 262) scale(.86) translate(-256 -285)"><polygon points="176.0,150.0 336.0,150.0 416.0,210.0 256.0,420.0 96.0,210.0"/><polyline points="96.0,210.0 176.0,210.0 256.0,210.0 336.0,210.0 416.0,210.0"/><polyline points="96.0,210.0 176.0,150.0 256.0,210.0 336.0,150.0 416.0,210.0"/><polyline points="176.0,210.0 256.0,420.0 336.0,210.0"/><line x1="256" y1="210" x2="256" y2="420"/></g></g>
+<path d="M402 96 Q407.28 114.72 426 120 Q407.28 125.28 402 144 Q396.72 125.28 378 120 Q396.72 114.72 402 96Z" fill="#E9FDFF"/>
+</svg>

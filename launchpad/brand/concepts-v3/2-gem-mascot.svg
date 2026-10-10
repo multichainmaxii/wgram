@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<defs><filter id="csh" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#0b2545" flood-opacity="0.28"/></filter></defs>
+<g filter="url(#csh)"><polygon points="176,150 336,150 416,210 256,420 96,210" fill="#fff" stroke="#fff" stroke-width="40" stroke-linejoin="round"/></g>
+<polygon points="96,210 176,150 176,210" fill="#BDEBFF"/><polygon points="176,150 256,210 176,210" fill="#7FD3FF"/><polygon points="176,150 256,150 256,210" fill="#A6E3FF"/><polygon points="256,150 336,150 256,210" fill="#5CC3FA"/><polygon points="336,150 336,210 256,210" fill="#8AD6FF"/><polygon points="336,150 416,210 336,210" fill="#3AAEF5"/><polygon points="96,210 176,210 256,420" fill="#2A9EF4"/><polygon points="176,210 256,210 256,420" fill="#1C7FDD"/><polygon points="256,210 336,210 256,420" fill="#1667CC"/><polygon points="336,210 416,210 256,420" fill="#0F52AE"/><polygon points="176,150 336,150 416,210 256,420 96,210" fill="none" stroke="#0E3A6B" stroke-width="11" stroke-linejoin="round"/>
+<polygon points="190,160 220,160 202,198" fill="#fff" opacity=".6"/>
+<ellipse cx="212" cy="262" rx="26" ry="31" fill="#fff" stroke="#0E3A6B" stroke-width="7"/><ellipse cx="300" cy="262" rx="26" ry="31" fill="#fff" stroke="#0E3A6B" stroke-width="7"/>
+<circle cx="219" cy="256" r="14" fill="#0E3A6B"/><circle cx="307" cy="256" r="14" fill="#0E3A6B"/>
+<circle cx="224" cy="250" r="5" fill="#fff"/><circle cx="312" cy="250" r="5" fill="#fff"/>
+<ellipse cx="176" cy="304" rx="18" ry="11" fill="#FF7A9C" opacity=".6"/><ellipse cx="336" cy="304" rx="18" ry="11" fill="#FF7A9C" opacity=".6"/>
+<path d="M234 306 Q256 330 278 306" fill="none" stroke="#0E3A6B" stroke-width="8" stroke-linecap="round"/>
+</svg>

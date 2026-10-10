@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<defs><linearGradient id="cbg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4CC3FA"/><stop offset="1" stop-color="#1668D2"/></linearGradient><filter id="csh" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#0b2545" flood-opacity="0.35"/></filter></defs><rect width="512" height="512" rx="120" fill="#17212B"/>
+<rect x="84" y="170" width="316" height="172" rx="40" fill="none" stroke="#fff" stroke-width="18"/>
+<rect x="408" y="222" width="24" height="68" rx="10" fill="#fff"/>
+<rect x="110" y="196" width="232" height="120" rx="22" fill="url(#cbg)"/>
+<g transform="translate(226 258) rotate(0) scale(0.3) translate(-256 -285)"><polygon points="96.0,210.0 176.0,150.0 176.0,210.0" fill="#FFFFFF"/><polygon points="176.0,150.0 256.0,210.0 176.0,210.0" fill="#E3F5FF"/><polygon points="176.0,150.0 256.0,150.0 256.0,210.0" fill="#F4FBFF"/><polygon points="256.0,150.0 336.0,150.0 256.0,210.0" fill="#D2EEFF"/><polygon points="336.0,150.0 336.0,210.0 256.0,210.0" fill="#EAF7FF"/><polygon points="336.0,150.0 416.0,210.0 336.0,210.0" fill="#C4E8FF"/><polygon points="96.0,210.0 176.0,210.0 256.0,420.0" fill="#B8E3FF"/><polygon points="176.0,210.0 256.0,210.0 256.0,420.0" fill="#9ED7FF"/><polygon points="256.0,210.0 336.0,210.0 256.0,420.0" fill="#86CBFB"/><polygon points="336.0,210.0 416.0,210.0 256.0,420.0" fill="#70BEF5"/></g>
+<path d="M430 108 Q434.4 123.6 450 128 Q434.4 132.4 430 148 Q425.6 132.4 410 128 Q425.6 123.6 430 108Z" fill="#FFD84D"/>
+</svg>
